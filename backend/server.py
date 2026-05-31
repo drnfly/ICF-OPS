@@ -1600,14 +1600,14 @@ async def seed_admin():
 
 
 REAL_INVENTORY = [
-    {"name": "NUDURA Gen 1 Strongback",  "category": "strongback", "condition": "good",      "location": "Yard A", "daily_rate": 7.25, "quantity": 50},
-    {"name": "NUDURA Gen 2 Strongback",  "category": "strongback", "condition": "excellent", "location": "Yard A", "daily_rate": 7.50, "quantity": 80},
-    {"name": "Reachcraft Gen 1 Strongback","category": "strongback", "condition": "good",    "location": "Yard B", "daily_rate": 7.00, "quantity": 40},
-    {"name": "Reachcraft Gen 2 Strongback","category": "strongback", "condition": "excellent","location": "Yard B", "daily_rate": 7.50, "quantity": 60},
-    {"name": "Walkboard Bracket",        "category": "scaffold",   "condition": "good",      "location": "Yard A", "daily_rate": 3.00, "quantity": 100},
-    {"name": "Handrail",                 "category": "scaffold",   "condition": "good",      "location": "Yard A", "daily_rate": 2.50, "quantity": 100},
-    {"name": "7' Brace Extension",       "category": "strongback", "condition": "good",      "location": "Yard B", "daily_rate": 4.00, "quantity": 50},
-    {"name": "20' Brace Extension",      "category": "strongback", "condition": "good",      "location": "Yard B", "daily_rate": 9.00, "quantity": 30},
+    {"name": "NUDURA Gen 1 Strongback",  "category": "strongback", "condition": "good",      "location": "Yard", "daily_rate": 7.25, "quantity": 50},
+    {"name": "NUDURA Gen 2 Strongback",  "category": "strongback", "condition": "excellent", "location": "Yard", "daily_rate": 7.50, "quantity": 80},
+    {"name": "Reachcraft Gen 1 Strongback","category": "strongback", "condition": "good",    "location": "Yard", "daily_rate": 7.00, "quantity": 40},
+    {"name": "Reachcraft Gen 2 Strongback","category": "strongback", "condition": "excellent","location": "Yard", "daily_rate": 7.50, "quantity": 60},
+    {"name": "Walkboard Bracket",        "category": "scaffold",   "condition": "good",      "location": "Yard", "daily_rate": 3.00, "quantity": 100},
+    {"name": "Handrail",                 "category": "scaffold",   "condition": "good",      "location": "Yard", "daily_rate": 2.50, "quantity": 100},
+    {"name": "7' Brace Extension",       "category": "strongback", "condition": "good",      "location": "Yard", "daily_rate": 4.00, "quantity": 50},
+    {"name": "20' Brace Extension",      "category": "strongback", "condition": "good",      "location": "Yard", "daily_rate": 9.00, "quantity": 30},
 ]
 
 OLD_DEMO_NAMES = {
