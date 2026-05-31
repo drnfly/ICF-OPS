@@ -46,6 +46,9 @@ export default function App() {
               <Route path="capacity" element={<Capacity />} />
               <Route path="calendar" element={<Calendar />} />
               <Route path="maintenance" element={<Maintenance />} />
+              <Route path="vendors" element={<Vendors />} />
+              <Route path="quotes" element={<Quotes />} />
+              <Route path="leads" element={<Leads />} />
               <Route path="admin" element={<Admin />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
