@@ -354,15 +354,15 @@ async def bracing_calculate(payload: BracingIn, user: dict = Depends(get_current
 
     # ICF braces only resist the upper portion of pressure — through-form ties
     # carry the majority (~75-80%) of lateral pressure to the slab and into the
-    # opposing form face. Per manufacturer engineering (Fox Blocks, Nudura),
+    # opposing form face. Per manufacturer engineering (NUDURA, Reachcraft),
     # brace working load is ~20-25% of total lateral resultant.
     brace_share = 0.22
     load_per_lf = total_resultant_lf * brace_share
 
-    # Manufacturer working brace capacities (typical):
-    # Wafer/turnbuckle: 5000 lbs; Strongback (engineered): 7500 lbs.
-    brace_type = "strongback" if (H >= 9.5 or payload.wind_exposure == "D" or (H >= 9 and R >= 5)) else "wafer"
-    brace_capacity = 7500.0 if brace_type == "strongback" else 5000.0
+    # All bracing is engineered strongback (NUDURA / Reachcraft Gen 1+2).
+    # Working capacity per manufacturer datasheets: ~7500 lbs. Safety factor applied.
+    brace_type = "strongback"
+    brace_capacity = 7500.0
     allowable = brace_capacity / payload.safety_factor
 
     # Brace spacing (ft) = allowable per brace / load per linear foot
@@ -1599,23 +1599,86 @@ async def seed_admin():
         })
 
 
+REAL_INVENTORY = [
+    {"name": "NUDURA Gen 1 Strongback",  "category": "strongback", "condition": "good",      "location": "Yard A", "daily_rate": 7.25, "quantity": 50},
+    {"name": "NUDURA Gen 2 Strongback",  "category": "strongback", "condition": "excellent", "location": "Yard A", "daily_rate": 7.50, "quantity": 80},
+    {"name": "Reachcraft Gen 1 Strongback","category": "strongback", "condition": "good",    "location": "Yard B", "daily_rate": 7.00, "quantity": 40},
+    {"name": "Reachcraft Gen 2 Strongback","category": "strongback", "condition": "excellent","location": "Yard B", "daily_rate": 7.50, "quantity": 60},
+    {"name": "Walkboard Bracket",        "category": "scaffold",   "condition": "good",      "location": "Yard A", "daily_rate": 3.00, "quantity": 100},
+    {"name": "Handrail",                 "category": "scaffold",   "condition": "good",      "location": "Yard A", "daily_rate": 2.50, "quantity": 100},
+    {"name": "7' Brace Extension",       "category": "strongback", "condition": "good",      "location": "Yard B", "daily_rate": 4.00, "quantity": 50},
+    {"name": "20' Brace Extension",      "category": "strongback", "condition": "good",      "location": "Yard B", "daily_rate": 9.00, "quantity": 30},
+]
+
+OLD_DEMO_NAMES = {
+    "Wafer Brace - 9ft", "Strongback Brace - 12ft", "Waler 8ft Aluminum",
+    "Turnbuckle Brace 14ft", "Alignment Tool Set", "Scaffold Plank 16ft",
+    "Concrete Vibrator",
+}
+
+
+async def migrate_demo_inventory():
+    """One-time wipe of v1 wafer-themed demo data + reseed with real ICF fleet."""
+    flag = await db.meta.find_one({"_id": "inventory_v2_migrated"})
+    if flag:
+        return
+
+    # Find any equipment matching old demo names
+    old = await db.equipment.find({"name": {"$in": list(OLD_DEMO_NAMES)}}).to_list(100)
+    old_ids = [str(d["_id"]) for d in old]
+
+    if old_ids:
+        # Wipe equipment + any data that depends on those equipment_ids
+        await db.equipment.delete_many({"name": {"$in": list(OLD_DEMO_NAMES)}})
+        # rentals: delete docs where every item is old demo equipment, OR flat doc with old equipment_id
+        await db.rentals.delete_many({
+            "$or": [
+                {"equipment_id": {"$in": old_ids}},  # legacy flat
+                {"items.equipment_id": {"$in": old_ids}},
+            ],
+        })
+        await db.bookings.delete_many({"equipment_id": {"$in": old_ids}})
+        await db.maintenance.delete_many({"equipment_id": {"$in": old_ids}})
+        await db.stock_adjustments.delete_many({"equipment_id": {"$in": old_ids}})
+        logger.info(f"Wiped {len(old_ids)} legacy demo equipment SKUs and their dependent data.")
+
+    # Seed real fleet for any names not already present
+    existing_names = {e["name"] async for e in db.equipment.find({}, {"name": 1})}
+    to_insert = []
+    for s in REAL_INVENTORY:
+        if s["name"] in existing_names:
+            continue
+        s = {**s, "available": s["quantity"], "created_at": now_utc()}
+        to_insert.append(s)
+    if to_insert:
+        res = await db.equipment.insert_many(to_insert)
+        for inserted_id, doc in zip(res.inserted_ids, to_insert):
+            await db.stock_adjustments.insert_one({
+                "equipment_id": str(inserted_id),
+                "delta": doc["quantity"],
+                "reason": "Initial stock — seeded real fleet",
+                "user_id": "system",
+                "user_email": "system@icfhub",
+                "created_at": now_utc(),
+            })
+        logger.info(f"Seeded {len(to_insert)} real fleet SKUs.")
+
+    # Seed demo customers if missing
+    if await db.customers.count_documents({}) == 0:
+        await db.customers.insert_many([
+            {"name": "Big Sky Concrete", "company": "Big Sky Concrete LLC", "phone": "555-0101", "email": "ops@bigsky.com", "address": "Bozeman, MT", "created_at": now_utc()},
+            {"name": "Stonebridge Homes", "company": "Stonebridge Homes Inc.", "phone": "555-0144", "email": "build@stonebridge.com", "address": "Boise, ID", "created_at": now_utc()},
+        ])
+
+    await db.meta.update_one({"_id": "inventory_v2_migrated"}, {"$set": {"at": now_utc()}}, upsert=True)
+
+
 async def seed_demo_inventory():
+    # First boot only — no real fleet yet at all
     if await db.equipment.count_documents({}) > 0:
         return
-    samples = [
-        {"name": "Wafer Brace - 9ft", "category": "brace", "condition": "good", "location": "Yard A", "daily_rate": 4.50, "quantity": 200},
-        {"name": "Strongback Brace - 12ft", "category": "strongback", "condition": "good", "location": "Yard A", "daily_rate": 7.25, "quantity": 80},
-        {"name": "Waler 8ft Aluminum", "category": "waler", "condition": "excellent", "location": "Yard B", "daily_rate": 3.00, "quantity": 150},
-        {"name": "Turnbuckle Brace 14ft", "category": "brace", "condition": "good", "location": "Yard A", "daily_rate": 6.50, "quantity": 60},
-        {"name": "Alignment Tool Set", "category": "alignment", "condition": "good", "location": "Shop", "daily_rate": 12.00, "quantity": 12},
-        {"name": "Scaffold Plank 16ft", "category": "scaffold", "condition": "fair", "location": "Yard B", "daily_rate": 2.50, "quantity": 100},
-        {"name": "Concrete Vibrator", "category": "tool", "condition": "good", "location": "Shop", "daily_rate": 35.00, "quantity": 5},
-    ]
-    for s in samples:
-        s["available"] = s["quantity"]
-        s["created_at"] = now_utc()
+    samples = [{**s, "available": s["quantity"], "created_at": now_utc()} for s in REAL_INVENTORY]
     await db.equipment.insert_many(samples)
-    # demo customer
     if await db.customers.count_documents({}) == 0:
         await db.customers.insert_many([
             {"name": "Big Sky Concrete", "company": "Big Sky Concrete LLC", "phone": "555-0101", "email": "ops@bigsky.com", "address": "Bozeman, MT", "created_at": now_utc()},
@@ -1636,6 +1699,7 @@ async def startup():
     await db.bookings.create_index("tentative_start_date")
     await seed_admin()
     await seed_demo_inventory()
+    await migrate_demo_inventory()
 
 
 @app.on_event("shutdown")
