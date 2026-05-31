@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Link } from "react-router-dom";
+import { useContent } from "../context/ContentContext";
 import {
   Bell,
   TrendUp,
@@ -33,6 +34,7 @@ function StatCard({ label, value, hint, icon: Icon, accent, testid }) {
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { content } = useContent();
 
   useEffect(() => {
     api.get("/dashboard/stats").then(({ data }) => {
@@ -58,12 +60,12 @@ export default function Dashboard() {
       {/* Hero */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
-          <div className="label-eyebrow">Operations · Today</div>
+          <div className="label-eyebrow">{content.dashboard_eyebrow}</div>
           <h1 className="font-display font-black text-4xl sm:text-5xl tracking-tight text-zinc-900 mt-2">
-            Control Room
+            {content.dashboard_title}
           </h1>
           <p className="text-zinc-500 mt-1 text-sm">
-            Real-time view of your bracing math, rentals, and crew activity.
+            {content.dashboard_subtitle}
           </p>
         </div>
         <div className="flex gap-3">

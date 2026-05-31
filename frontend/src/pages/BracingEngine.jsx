@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
+import { useContent } from "../context/ContentContext";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
@@ -49,7 +50,11 @@ function ResultStat({ label, value, unit, big, accent, testid }) {
 }
 
 export default function BracingEngine() {
-  const [form, setForm] = useState(DEFAULTS);
+  const { content } = useContent();
+  const [form, setForm] = useState({
+    ...DEFAULTS,
+    safety_factor: Number(content.default_safety_factor) || DEFAULTS.safety_factor,
+  });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -82,7 +87,7 @@ export default function BracingEngine() {
           <div className="label-eyebrow">Engineering · ACI 347</div>
           <h1 className="font-display font-black text-4xl sm:text-5xl tracking-tight text-zinc-900 mt-2">Bracing Engine</h1>
           <p className="text-zinc-500 mt-1 text-sm max-w-xl">
-            Enter wall specs and pour parameters. Get brace spacing, count, hardware, and safety factor — backed by ACI 347 lateral concrete pressure formulas.
+            {content.bracing_subtitle}
           </p>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
+import { useContent } from "../context/ContentContext";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
@@ -30,7 +31,11 @@ function ResultStat({ label, value, unit, big, testid }) {
 }
 
 export default function Estimator() {
-  const [form, setForm] = useState(DEFAULTS);
+  const { content } = useContent();
+  const [form, setForm] = useState({
+    ...DEFAULTS,
+    rebar_size: ["#3", "#4", "#5", "#6"].includes(content.default_rebar_size) ? content.default_rebar_size : DEFAULTS.rebar_size,
+  });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -60,7 +65,7 @@ export default function Estimator() {
       <div className="mb-6">
         <div className="label-eyebrow">Take-off · BOM</div>
         <h1 className="font-display font-black text-4xl sm:text-5xl tracking-tight text-zinc-900 mt-2">Quick Estimator</h1>
-        <p className="text-zinc-500 mt-1 text-sm">Wall area → ICF blocks, concrete yardage, rebar tonnage, and a printable BOM.</p>
+        <p className="text-zinc-500 mt-1 text-sm">{content.estimator_subtitle}</p>
       </div>
 
       <div className="grid lg:grid-cols-5 gap-6">
@@ -115,10 +120,10 @@ export default function Estimator() {
             </div>
             <div className="col-span-2">
               <Label className="label-eyebrow">Block face area (sqft)</Label>
-              <Input type="number" step="0.01" min="4" max="8" value={form.block_face_sqft}
+              <Input type="number" step="0.01" min="4" max="12" value={form.block_face_sqft}
                 onChange={(e) => update("block_face_sqft", e.target.value)}
                 className="rounded-sm mt-1" data-testid="est-block-face" />
-              <div className="text-xs text-zinc-500 mt-1">Default 5.33 (16″×48″). Use 8.0 for jumbo blocks.</div>
+              <div className="text-xs text-zinc-500 mt-1">Default 5.33 (16″×48″). Use 10.67 for NUDURA 8′×16″, up to 12 for oversized blocks.</div>
             </div>
           </div>
 

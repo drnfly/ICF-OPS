@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useContent } from "../context/ContentContext";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
@@ -8,6 +9,7 @@ import { ArrowRight, Hammer } from "@phosphor-icons/react";
 
 export default function Login() {
   const { user, login, register, error } = useAuth();
+  const { content } = useContent();
   const nav = useNavigate();
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("admin@icfhub.com");
@@ -50,8 +52,8 @@ export default function Login() {
               <Hammer size={24} weight="fill" color="#09090B" />
             </div>
             <div>
-              <div className="font-display font-black text-2xl tracking-tight">ICF OPS HUB</div>
-              <div className="text-[11px] tracking-[0.3em] uppercase text-orange-400">Operations Console</div>
+              <div className="font-display font-black text-2xl tracking-tight">{content.brand_name}</div>
+              <div className="text-[11px] tracking-[0.3em] uppercase text-orange-400">{content.brand_tagline}</div>
             </div>
           </div>
         </div>
@@ -59,24 +61,24 @@ export default function Login() {
         <div className="relative z-10 max-w-md">
           <div className="diag-stripes h-1.5 w-24 mb-8" />
           <h1 className="font-display font-black text-5xl leading-[0.95] tracking-tight">
-            Stop guessing.<br />
-            Start <span className="text-orange-500">bracing right.</span>
+            {content.login_headline_a}<br />
+            <span className="text-orange-500">{content.login_headline_b}</span>
           </h1>
           <p className="mt-6 text-zinc-300 text-base leading-relaxed">
-            ACI 347 lateral-pressure calcs, live rental tracking, and BOM estimates in one rugged console — built for the trailer and the truck.
+            {content.login_subhead}
           </p>
           <div className="mt-10 grid grid-cols-3 gap-6 text-xs tracking-widest uppercase font-display font-medium">
             <div>
-              <div className="text-orange-400 text-3xl font-black font-display">30m</div>
-              <div className="text-zinc-400 mt-1">Saved per wall layout</div>
+              <div className="text-orange-400 text-3xl font-black font-display">{content.login_stat1_value}</div>
+              <div className="text-zinc-400 mt-1">{content.login_stat1_label}</div>
             </div>
             <div>
-              <div className="text-orange-400 text-3xl font-black font-display">2.0×</div>
-              <div className="text-zinc-400 mt-1">Default safety factor</div>
+              <div className="text-orange-400 text-3xl font-black font-display">{content.login_stat2_value}</div>
+              <div className="text-zinc-400 mt-1">{content.login_stat2_label}</div>
             </div>
             <div>
-              <div className="text-orange-400 text-3xl font-black font-display">100%</div>
-              <div className="text-zinc-400 mt-1">Field-ready, mobile-first</div>
+              <div className="text-orange-400 text-3xl font-black font-display">{content.login_stat3_value}</div>
+              <div className="text-zinc-400 mt-1">{content.login_stat3_label}</div>
             </div>
           </div>
         </div>
@@ -91,11 +93,11 @@ export default function Login() {
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-10">
             <div className="w-10 h-10 bg-zinc-900 flex items-center justify-center brand-shadow">
-              <span className="font-display font-black text-orange-500 text-lg">IC</span>
+              <span className="font-display font-black text-orange-500 text-lg">{(content.brand_name || "IC").slice(0, 2).toUpperCase()}</span>
             </div>
             <div>
-              <div className="font-display font-bold text-zinc-900">ICF OPS HUB</div>
-              <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-500">Operations Console</div>
+              <div className="font-display font-bold text-zinc-900">{content.brand_name}</div>
+              <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-500">{content.brand_tagline}</div>
             </div>
           </div>
 

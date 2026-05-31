@@ -13,8 +13,10 @@ import {
   CalendarBlank,
   SignOut,
   List as ListIcon,
+  Shield,
   X,
 } from "@phosphor-icons/react";
+import { useContent } from "../context/ContentContext";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: ChartBar, end: true, testid: "nav-dashboard" },
@@ -28,8 +30,11 @@ const navItems = [
   { to: "/maintenance", label: "Maintenance", icon: WrenchIcon, testid: "nav-maintenance" },
 ];
 
+const adminNav = { to: "/admin", label: "Site Admin", icon: Shield, testid: "nav-admin" };
+
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { content } = useContent();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -37,6 +42,8 @@ export default function Layout() {
     await logout();
     nav("/login");
   }
+
+  const items = user?.role === "admin" ? [...navItems, adminNav] : navItems;
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -54,11 +61,11 @@ export default function Layout() {
             </button>
             <div className="flex items-center gap-2">
               <div className="w-9 h-9 bg-zinc-900 flex items-center justify-center brand-shadow">
-                <span className="font-display font-black text-orange-500 text-lg leading-none">IC</span>
+                <span className="font-display font-black text-orange-500 text-lg leading-none">{(content.brand_name || "IC").slice(0, 2).toUpperCase()}</span>
               </div>
               <div className="leading-tight">
-                <div className="font-display font-bold tracking-tight text-zinc-900">ICF OPS HUB</div>
-                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-500">Operations Console</div>
+                <div className="font-display font-bold tracking-tight text-zinc-900">{content.brand_name}</div>
+                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-500">{content.brand_tagline}</div>
               </div>
             </div>
           </div>
@@ -91,7 +98,7 @@ export default function Layout() {
           } lg:translate-x-0 h-[calc(100vh-4rem)] flex flex-col`}
         >
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-            {navItems.map((item) => (
+            {items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
