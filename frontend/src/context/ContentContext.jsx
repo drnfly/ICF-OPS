@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api } from "../lib/api";
+import { api, API_BASE } from "../lib/api";
 
 const ContentCtx = createContext(null);
 
@@ -42,6 +42,36 @@ export function ContentProvider({ children }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Sync browser tab: title from brand_name, favicon from uploaded logo
+  useEffect(() => {
+    if (content.brand_name) {
+      document.title = content.brand_name;
+    }
+
+    const ensureFaviconLink = () => {
+      let link = document.querySelector('link[rel="icon"]');
+      if (!link) {
+        link = document.createElement("link");
+        link.rel = "icon";
+        document.head.appendChild(link);
+      }
+      return link;
+    };
+
+    const link = ensureFaviconLink();
+    if (content.has_logo) {
+      // cache-bust on logo updates by tying to the brand_name version
+      link.href = `${API_BASE}/content/logo?v=${encodeURIComponent(content.brand_name || "")}`;
+      link.type = "";  // let the response Content-Type drive it
+      link.dataset.icfRestored = "0";
+    } else if (link.dataset.icfRestored !== "1") {
+      // Restore the default React favicon
+      link.href = "/favicon.ico";
+      link.type = "image/x-icon";
+      link.dataset.icfRestored = "1";
+    }
+  }, [content.has_logo, content.brand_name]);
 
   return (
     <ContentCtx.Provider value={{ content, refresh, setContent }}>
