@@ -15,6 +15,9 @@ import Bookings from "./pages/Bookings";
 import Capacity from "./pages/Capacity";
 import Calendar from "./pages/Calendar";
 import Maintenance from "./pages/Maintenance";
+import Vendors from "./pages/Vendors";
+import Quotes from "./pages/Quotes";
+import Leads from "./pages/Leads";
 import Admin from "./pages/Admin";
 import "@/App.css";
 

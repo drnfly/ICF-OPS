@@ -9,6 +9,7 @@ import io
 import csv
 import uuid
 import logging
+import json as jsonlib
 import requests
 import math
 import secrets
@@ -18,7 +19,7 @@ from typing import Optional, List, Literal
 import bcrypt
 import jwt
 from bson import ObjectId
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, status
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -1667,6 +1668,304 @@ async def fetch_logo():
     return Response(content=data, media_type=doc.get("logo_content_type") or ctype, headers={"Cache-Control": "public, max-age=60"})
 
 
+# ----------------------------- Vendors + Quote Analyzer ----------------
+class VendorIn(BaseModel):
+    name: str
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    address: Optional[str] = None
+    categories: List[str] = []  # e.g. ["NUDURA","Fox Block"]
+    freight_terms: Optional[Literal["FOB Origin", "FOB Destination", "Prepaid + Add", "Collect", "Other"]] = None
+    units_per_truck: Optional[int] = None
+    capacity_unit: Optional[Literal["blocks", "lbs", "pallets", "sqft"]] = "blocks"
+    freight_cost_per_truck: Optional[float] = None
+    lead_time_days: Optional[int] = None
+    min_order_for_free_freight: Optional[float] = None
+    notes: Optional[str] = None
+
+
+def serialize_vendor(d: dict) -> dict:
+    return {
+        "id": str(d["_id"]),
+        **{k: d.get(k) for k in [
+            "name", "contact_name", "phone", "email", "address",
+            "categories", "freight_terms", "units_per_truck", "capacity_unit",
+            "freight_cost_per_truck", "lead_time_days",
+            "min_order_for_free_freight", "notes",
+        ]},
+        "created_at": d.get("created_at").isoformat() if isinstance(d.get("created_at"), datetime) else d.get("created_at"),
+    }
+
+
+@api.get("/vendors")
+async def list_vendors(user: dict = Depends(get_current_user)):
+    items = await db.vendors.find({}).sort("name", 1).to_list(500)
+    return [serialize_vendor(v) for v in items]
+
+
+@api.post("/vendors")
+async def create_vendor(payload: VendorIn, user: dict = Depends(get_current_user)):
+    doc = payload.model_dump()
+    doc["created_at"] = now_utc()
+    res = await db.vendors.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    return serialize_vendor(doc)
+
+
+@api.patch("/vendors/{vendor_id}")
+async def update_vendor(vendor_id: str, payload: VendorIn, user: dict = Depends(get_current_user)):
+    update = payload.model_dump()
+    res = await db.vendors.find_one_and_update(
+        {"_id": ObjectId(vendor_id)}, {"$set": update}, return_document=True,
+    )
+    if not res:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return serialize_vendor(res)
+
+
+@api.delete("/vendors/{vendor_id}")
+async def delete_vendor(vendor_id: str, user: dict = Depends(require_role("admin", "foreman"))):
+    await db.vendors.delete_one({"_id": ObjectId(vendor_id)})
+    return {"ok": True}
+
+
+# Quote analyzer
+QUOTE_PROMPT = (
+    "You are a procurement analyst for an ICF (Insulated Concrete Form) contractor. "
+    "Extract structured data from the following vendor quote. Return STRICT JSON only "
+    "(no prose, no markdown) matching this schema:\n"
+    "{\n"
+    '  "vendor_guess": str|null,  // vendor name if found in the doc\n'
+    '  "quote_date": str|null,    // YYYY-MM-DD if found\n'
+    '  "expiration_date": str|null,\n'
+    '  "currency": str,           // USD/CAD/etc\n'
+    '  "line_items": [ {"description": str, "quantity": number, "unit": str|null, "unit_price": number, "line_total": number} ],\n'
+    '  "subtotal": number|null,\n'
+    '  "freight": number|null,\n'
+    '  "tax": number|null,\n'
+    '  "grand_total": number|null,\n'
+    '  "freight_terms": str|null,\n'
+    '  "lead_time_days": number|null,\n'
+    '  "payment_terms": str|null,\n'
+    '  "warnings": [str],         // hidden fees, expired items, vague pricing, etc\n'
+    '  "summary": str             // 2-3 sentence executive summary\n'
+    "}\n"
+    "If a field is missing, use null. Be conservative; do not invent numbers."
+)
+
+
+async def _gemini_json(prompt: str, system: str = QUOTE_PROMPT) -> dict:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    try:
+        chat = LlmChat(
+            api_key=os.environ["EMERGENT_LLM_KEY"],
+            session_id=f"quote-{uuid.uuid4()}",
+            system_message=system,
+        ).with_model("gemini", "gemini-3-flash-preview")
+        raw = await chat.send_message(UserMessage(text=prompt))
+    except Exception as e:
+        msg = str(e)
+        if "Budget has been exceeded" in msg:
+            raise HTTPException(
+                status_code=402,
+                detail="Universal LLM key budget exceeded. Top up via Profile → Universal Key → Add Balance, then retry.",
+            )
+        raise HTTPException(status_code=502, detail=f"AI provider error: {msg[:240]}")
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    try:
+        return jsonlib.loads(text)
+    except Exception:
+        return {"raw": raw, "parse_error": True}
+
+
+def _pdf_to_text(data: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        return "\n".join((p.extract_text() or "") for p in reader.pages).strip()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF parse failed: {e}")
+
+
+@api.post("/quotes")
+async def upload_quote(
+    text: Optional[str] = Form(None),
+    vendor_id: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(get_current_user),
+):
+    """Accepts paste-text or a PDF, extracts text, sends to Gemini for structured analysis."""
+    body = (text or "").strip()
+    if file:
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="File is empty")
+        if (file.filename or "").lower().endswith(".pdf"):
+            body = (_pdf_to_text(data) + "\n" + body).strip()
+        else:
+            raise HTTPException(status_code=400, detail="Only .pdf uploads supported (or paste text)")
+    if not body or len(body) < 30:
+        raise HTTPException(status_code=400, detail="Need at least a paragraph of quote text or a PDF.")
+
+    analysis = await _gemini_json(body[:30000])  # cap input size
+    vendor = None
+    if vendor_id:
+        vendor = await db.vendors.find_one({"_id": ObjectId(vendor_id)})
+
+    doc = {
+        "vendor_id": vendor_id,
+        "vendor_name": vendor.get("name") if vendor else analysis.get("vendor_guess"),
+        "raw_text": body[:30000],
+        "analysis": analysis,
+        "created_at": now_utc(),
+        "created_by": str(user["_id"]),
+    }
+    res = await db.quotes.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    return _serialize_quote(doc)
+
+
+def _serialize_quote(d: dict) -> dict:
+    return {
+        "id": str(d["_id"]),
+        "vendor_id": d.get("vendor_id"),
+        "vendor_name": d.get("vendor_name"),
+        "analysis": d.get("analysis", {}),
+        "created_at": d.get("created_at").isoformat() if isinstance(d.get("created_at"), datetime) else d.get("created_at"),
+    }
+
+
+@api.get("/quotes")
+async def list_quotes(user: dict = Depends(get_current_user)):
+    items = await db.quotes.find({}).sort("created_at", -1).to_list(200)
+    return [_serialize_quote(d) for d in items]
+
+
+@api.delete("/quotes/{quote_id}")
+async def delete_quote(quote_id: str, user: dict = Depends(get_current_user)):
+    await db.quotes.delete_one({"_id": ObjectId(quote_id)})
+    return {"ok": True}
+
+
+class CompareQuotesIn(BaseModel):
+    quote_ids: List[str] = Field(min_length=2, max_length=5)
+
+
+@api.post("/quotes/compare")
+async def compare_quotes(payload: CompareQuotesIn, user: dict = Depends(get_current_user)):
+    docs = await db.quotes.find({"_id": {"$in": [ObjectId(x) for x in payload.quote_ids]}}).to_list(10)
+    if len(docs) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 valid quotes to compare")
+    summaries = []
+    for d in docs:
+        a = d.get("analysis", {})
+        summaries.append({
+            "vendor": d.get("vendor_name") or a.get("vendor_guess") or "Unknown",
+            "grand_total": a.get("grand_total"),
+            "freight": a.get("freight"),
+            "lead_time_days": a.get("lead_time_days"),
+            "freight_terms": a.get("freight_terms"),
+            "expiration_date": a.get("expiration_date"),
+            "summary": a.get("summary"),
+            "line_items_count": len(a.get("line_items") or []),
+        })
+    sys_prompt = (
+        "You are a procurement analyst. Compare these ICF block vendor quotes and return STRICT JSON:\n"
+        '{ "winner": str, "reason": str, "risks": [str], "ranking": [{"vendor": str, "score": number, "why": str}] }'
+        " Score 0-100. Consider total price, freight, lead time, terms, and risks. No markdown, no prose outside JSON."
+    )
+    result = await _gemini_json(jsonlib.dumps(summaries, indent=2), system=sys_prompt)
+    return {"quotes": [_serialize_quote(d) for d in docs], "comparison": result}
+
+
+async def seed_vendors():
+    if await db.vendors.count_documents({}) > 0:
+        return
+    for name in ["NUDURA", "Fox Blocks", "Amvic", "BuildBlock", "SuperForm", "Quad-Lock"]:
+        await db.vendors.insert_one({
+            "name": name, "categories": [name], "capacity_unit": "blocks",
+            "freight_terms": "FOB Origin", "created_at": now_utc(),
+        })
+
+
+# ----------------------------- Leads / Lead Checklist ------------------
+LOST_REASONS = ["Price", "Lost to competitor", "Project cancelled", "No response",
+                "Timing / lead time", "Scope mismatch", "Other"]
+
+
+class LeadIn(BaseModel):
+    customer_name: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    job_site: Optional[str] = None
+    estimated_value: float = Field(ge=0, default=0)
+    status: Literal["new", "reviewed", "quoted", "followed_up", "sold", "lost"] = "new"
+    lost_reason: Optional[str] = None
+    lost_notes: Optional[str] = None
+    last_review_date: Optional[str] = None
+    next_followup_date: Optional[str] = None
+    # Scope checklist — for each item: providing(bool), product (e.g. "NUDURA Gen 2"), notes
+    scope: dict = Field(default_factory=dict)
+    notes: Optional[str] = None
+
+
+def _serialize_lead(d: dict) -> dict:
+    return {
+        "id": str(d["_id"]),
+        **{k: d.get(k) for k in [
+            "customer_name", "company", "phone", "email", "job_site",
+            "estimated_value", "status", "lost_reason", "lost_notes",
+            "last_review_date", "next_followup_date", "scope", "notes",
+        ]},
+        "created_at": d.get("created_at").isoformat() if isinstance(d.get("created_at"), datetime) else d.get("created_at"),
+    }
+
+
+@api.get("/leads")
+async def list_leads(user: dict = Depends(get_current_user)):
+    items = await db.leads.find({}).sort("created_at", -1).to_list(500)
+    return [_serialize_lead(d) for d in items]
+
+
+@api.post("/leads")
+async def create_lead(payload: LeadIn, user: dict = Depends(get_current_user)):
+    doc = payload.model_dump()
+    doc["created_at"] = now_utc()
+    doc["created_by"] = str(user["_id"])
+    res = await db.leads.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    return _serialize_lead(doc)
+
+
+@api.patch("/leads/{lead_id}")
+async def update_lead(lead_id: str, payload: LeadIn, user: dict = Depends(get_current_user)):
+    update = payload.model_dump()
+    res = await db.leads.find_one_and_update(
+        {"_id": ObjectId(lead_id)}, {"$set": update}, return_document=True,
+    )
+    if not res:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return _serialize_lead(res)
+
+
+@api.delete("/leads/{lead_id}")
+async def delete_lead(lead_id: str, user: dict = Depends(require_role("admin", "foreman"))):
+    await db.leads.delete_one({"_id": ObjectId(lead_id)})
+    return {"ok": True}
+
+
+@api.get("/leads/lost-reasons")
+async def list_lost_reasons(user: dict = Depends(get_current_user)):
+    return LOST_REASONS
+
+
 # ----------------------------- Dashboard -------------------------------
 @api.get("/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
@@ -1868,6 +2167,7 @@ async def startup():
     await seed_admin()
     await seed_demo_inventory()
     await migrate_demo_inventory()
+    await seed_vendors()
     try:
         if _ensure_storage_key():
             logger.info("Object storage initialized")
