@@ -1911,7 +1911,7 @@ class LeadIn(BaseModel):
     lost_notes: Optional[str] = None
     last_review_date: Optional[str] = None
     next_followup_date: Optional[str] = None
-    # Scope checklist — for each item: providing(bool), product (e.g. "NUDURA Gen 2"), notes
+    # Scope checklist — for each item: {status: providing|by_others|na, product, price}
     scope: dict = Field(default_factory=dict)
     notes: Optional[str] = None
 
