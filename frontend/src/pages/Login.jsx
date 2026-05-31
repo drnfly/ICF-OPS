@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useContent } from "../context/ContentContext";
+import { API_BASE } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
@@ -48,8 +49,12 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-950/85 to-orange-950/70" />
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-orange-500 flex items-center justify-center brand-shadow">
-              <Hammer size={24} weight="fill" color="#09090B" />
+            <div className="w-12 h-12 bg-orange-500 flex items-center justify-center brand-shadow overflow-hidden">
+              {content.has_logo ? (
+                <img src={`${API_BASE}/content/logo`} alt={content.brand_name} className="max-w-full max-h-full object-contain" />
+              ) : (
+                <Hammer size={24} weight="fill" color="#09090B" />
+              )}
             </div>
             <div>
               <div className="font-display font-black text-2xl tracking-tight">{content.brand_name}</div>
@@ -92,8 +97,12 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 sm:p-12 bg-white">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-10">
-            <div className="w-10 h-10 bg-zinc-900 flex items-center justify-center brand-shadow">
-              <span className="font-display font-black text-orange-500 text-lg">{(content.brand_name || "IC").slice(0, 2).toUpperCase()}</span>
+            <div className="w-10 h-10 bg-zinc-900 flex items-center justify-center brand-shadow overflow-hidden">
+              {content.has_logo ? (
+                <img src={`${API_BASE}/content/logo`} alt={content.brand_name} className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="font-display font-black text-orange-500 text-lg">{(content.brand_name || "IC").slice(0, 2).toUpperCase()}</span>
+              )}
             </div>
             <div>
               <div className="font-display font-bold text-zinc-900">{content.brand_name}</div>

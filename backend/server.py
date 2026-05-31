@@ -7,7 +7,9 @@ load_dotenv(ROOT_DIR / ".env")
 import os
 import io
 import csv
+import uuid
 import logging
+import requests
 import math
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -1525,10 +1527,13 @@ DEFAULT_CONTENT = {
 async def get_site_content() -> dict:
     doc = await db.site_content.find_one({"_id": "site"})
     data = dict(DEFAULT_CONTENT)
+    data["has_logo"] = False
     if doc:
         for k, v in doc.items():
             if k != "_id" and v is not None:
                 data[k] = v
+        if doc.get("logo_path"):
+            data["has_logo"] = True
     return data
 
 
@@ -1551,6 +1556,115 @@ async def update_content(payload: ContentUpdateIn, user: dict = Depends(require_
     valid = {k: str(v) for k, v in valid.items()}
     await db.site_content.update_one({"_id": "site"}, {"$set": valid}, upsert=True)
     return await get_site_content()
+
+
+# ----------------------------- Logo (Emergent object storage) ----------
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+STORAGE_APP = os.environ.get("APP_STORAGE_NAME", "icf-ops-hub")
+_storage_key: Optional[str] = None
+
+
+def _ensure_storage_key() -> Optional[str]:
+    """Lazy-init the storage session key. Returns None if integration is unavailable."""
+    global _storage_key
+    if _storage_key:
+        return _storage_key
+    emergent_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not emergent_key:
+        return None
+    try:
+        r = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": emergent_key}, timeout=20)
+        r.raise_for_status()
+        _storage_key = r.json().get("storage_key")
+        return _storage_key
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
+        return None
+
+
+def _put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = _ensure_storage_key()
+    if not key:
+        raise HTTPException(status_code=503, detail="Object storage not available")
+    r = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=60,
+    )
+    if r.status_code == 403:
+        # key may be expired — reset and retry once
+        global _storage_key
+        _storage_key = None
+        key = _ensure_storage_key()
+        r = requests.put(
+            f"{STORAGE_URL}/objects/{path}",
+            headers={"X-Storage-Key": key, "Content-Type": content_type},
+            data=data, timeout=60,
+        )
+    r.raise_for_status()
+    return r.json()
+
+
+def _get_object(path: str):
+    key = _ensure_storage_key()
+    if not key:
+        raise HTTPException(status_code=503, detail="Object storage not available")
+    r = requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=30,
+    )
+    if r.status_code == 404:
+        raise HTTPException(status_code=404, detail="Logo not found")
+    r.raise_for_status()
+    return r.content, r.headers.get("Content-Type", "image/png")
+
+
+LOGO_MIME = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "webp": "image/webp", "svg": "image/svg+xml",
+}
+
+
+@api.post("/content/logo")
+async def upload_logo(file: UploadFile = File(...), user: dict = Depends(require_role("admin"))):
+    fname = (file.filename or "").lower()
+    ext = fname.rsplit(".", 1)[-1] if "." in fname else ""
+    if ext not in LOGO_MIME:
+        raise HTTPException(status_code=400, detail=f"Unsupported logo type — use {', '.join(LOGO_MIME.keys())}")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="File is empty")
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Logo must be <= 2 MB")
+    path = f"{STORAGE_APP}/logos/{uuid.uuid4()}.{ext}"
+    _put_object(path, data, LOGO_MIME[ext])
+    await db.site_content.update_one(
+        {"_id": "site"},
+        {"$set": {"logo_path": path, "logo_content_type": LOGO_MIME[ext]}},
+        upsert=True,
+    )
+    return {"ok": True, "logo_path": path}
+
+
+@api.delete("/content/logo")
+async def remove_logo(user: dict = Depends(require_role("admin"))):
+    """Object storage has no delete API — just clear the DB reference."""
+    await db.site_content.update_one(
+        {"_id": "site"},
+        {"$unset": {"logo_path": "", "logo_content_type": ""}},
+    )
+    return {"ok": True}
+
+
+@api.get("/content/logo")
+async def fetch_logo():
+    """Public — fetched by the login page (unauthenticated) and the header."""
+    from fastapi.responses import Response
+    doc = await db.site_content.find_one({"_id": "site"})
+    if not doc or not doc.get("logo_path"):
+        raise HTTPException(status_code=404, detail="No logo uploaded")
+    data, ctype = _get_object(doc["logo_path"])
+    return Response(content=data, media_type=doc.get("logo_content_type") or ctype, headers={"Cache-Control": "public, max-age=60"})
 
 
 # ----------------------------- Dashboard -------------------------------
@@ -1754,6 +1868,11 @@ async def startup():
     await seed_admin()
     await seed_demo_inventory()
     await migrate_demo_inventory()
+    try:
+        if _ensure_storage_key():
+            logger.info("Object storage initialized")
+    except Exception as e:
+        logger.warning(f"Object storage not available: {e}")
 
 
 @app.on_event("shutdown")

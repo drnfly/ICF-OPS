@@ -8,7 +8,8 @@ import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
-import { Shield, FloppyDisk, ArrowCounterClockwise } from "@phosphor-icons/react";
+import { Shield, FloppyDisk, ArrowCounterClockwise, Upload, Trash, ImageSquare } from "@phosphor-icons/react";
+import { API_BASE } from "../lib/api";
 
 const SECTIONS = [
   {
@@ -72,6 +73,8 @@ export default function Admin() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [logoCacheBuster, setLogoCacheBuster] = useState(Date.now());
 
   useEffect(() => {
     setForm({ ...content });
@@ -116,6 +119,42 @@ export default function Admin() {
     setForm({ ...content });
     setDirty(false);
     toast.info("Reverted unsaved changes");
+  }
+
+  // ─── Logo upload ────────────────────────────────────────────────────────
+  async function uploadLogo(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";  // reset so the same file can be reselected
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Logo must be 2 MB or less");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post("/content/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await refresh();
+      setLogoCacheBuster(Date.now());
+      toast.success("Logo updated");
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err?.response?.data?.detail) || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeLogo() {
+    if (!confirm("Remove the logo and fall back to text initials?")) return;
+    try {
+      await api.delete("/content/logo");
+      await refresh();
+      setLogoCacheBuster(Date.now());
+      toast.success("Logo removed");
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err?.response?.data?.detail) || "Remove failed");
+    }
   }
 
   return (
@@ -170,6 +209,60 @@ export default function Admin() {
               <div className="font-display font-bold text-lg text-zinc-900">{section.title}</div>
               <div className="text-xs text-zinc-500 mt-0.5">{section.description}</div>
             </div>
+
+            {section.key === "brand" && (
+              <div className="p-5 border-b border-zinc-100">
+                <Label className="label-eyebrow mb-2 block">Logo image</Label>
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 border-2 border-dashed border-zinc-300 bg-zinc-50 flex items-center justify-center overflow-hidden">
+                    {content.has_logo ? (
+                      <img
+                        src={`${API_BASE}/content/logo?v=${logoCacheBuster}`}
+                        alt="Current logo"
+                        className="max-w-full max-h-full object-contain"
+                        data-testid="logo-preview"
+                      />
+                    ) : (
+                      <ImageSquare size={28} weight="duotone" className="text-zinc-400" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex gap-2 flex-wrap">
+                      <label
+                        className={`inline-flex items-center gap-2 px-3 py-2 border border-zinc-300 hover:bg-zinc-50 rounded-sm cursor-pointer font-display text-xs uppercase tracking-wider ${uploading ? "opacity-50 pointer-events-none" : ""}`}
+                        data-testid="logo-upload-label"
+                      >
+                        <Upload size={12} weight="bold" />
+                        {uploading ? "Uploading…" : content.has_logo ? "Replace" : "Upload logo"}
+                        <input
+                          type="file"
+                          accept=".png,.jpg,.jpeg,.webp,.svg,image/*"
+                          onChange={uploadLogo}
+                          className="hidden"
+                          data-testid="logo-upload-input"
+                        />
+                      </label>
+                      {content.has_logo && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={removeLogo}
+                          data-testid="logo-remove-btn"
+                          className="rounded-sm font-display uppercase tracking-wider text-xs gap-1.5 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                        >
+                          <Trash size={12} weight="bold" /> Remove
+                        </Button>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-1.5">
+                      PNG / JPG / WebP / SVG · max 2 MB · falls back to brand-name initials if no logo set.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
               {section.fields.map((f) => (
                 <div key={f.k} className={f.textarea ? "md:col-span-2" : ""}>

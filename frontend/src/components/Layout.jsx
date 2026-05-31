@@ -17,6 +17,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useContent } from "../context/ContentContext";
+import { API_BASE } from "../lib/api";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: ChartBar, end: true, testid: "nav-dashboard" },
@@ -60,8 +61,17 @@ export default function Layout() {
               {open ? <X size={22} /> : <ListIcon size={22} />}
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-zinc-900 flex items-center justify-center brand-shadow">
-                <span className="font-display font-black text-orange-500 text-lg leading-none">{(content.brand_name || "IC").slice(0, 2).toUpperCase()}</span>
+              <div className="w-9 h-9 bg-zinc-900 flex items-center justify-center brand-shadow overflow-hidden">
+                {content.has_logo ? (
+                  <img
+                    src={`${API_BASE}/content/logo`}
+                    alt={content.brand_name}
+                    className="max-w-full max-h-full object-contain"
+                    data-testid="header-logo-img"
+                  />
+                ) : (
+                  <span className="font-display font-black text-orange-500 text-lg leading-none">{(content.brand_name || "IC").slice(0, 2).toUpperCase()}</span>
+                )}
               </div>
               <div className="leading-tight">
                 <div className="font-display font-bold tracking-tight text-zinc-900">{content.brand_name}</div>
