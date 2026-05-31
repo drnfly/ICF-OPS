@@ -73,5 +73,17 @@ GET  /api/dashboard/stats
 - admin@icfhub.com / admin123 (admin)
 - foreman@icfhub.com / foreman123 (foreman)
 
+## Implemented — New Modules (May 31, 2026)
+- ✅ **Vendors** directory — ICF block suppliers, freight terms, per-truck capacity, lead times. Full CRUD. Seeds 6 vendors (Amvic, BuildBlock, Fox Blocks, NUDURA, Quad-Lock, SuperForm).
+- ✅ **Quote Analyzer** — paste text or upload PDF → Gemini 3 Flash (`gemini-3-flash-preview` via Emergent Universal LLM Key) extracts line items, totals, freight, warnings. Multi-quote (2–5) compare with winner recommendation. Budget-exceeded returns HTTP 402 with friendly message, surfaced via toast (no crash).
+- ✅ **Leads & Scope Checklist** CRM — customer pipeline (new→reviewed→quoted→followed_up→sold→lost), 9-item scope checklist (toggle providing + product detail per item), won/lost tracking with lost reasons (`/api/leads/lost-reasons`).
+- ✅ Routes wired in `App.js` (vendors/quotes/leads) + sidebar nav links added in `Layout.jsx` (nav-vendors, nav-quotes, nav-leads).
+- Backend endpoints: `GET/POST/PATCH/DELETE /api/vendors`, `GET/POST/DELETE /api/quotes`, `POST /api/quotes/compare`, `GET/POST/PATCH/DELETE /api/leads`, `GET /api/leads/lost-reasons`.
+- DB collections: `vendors`, `quotes`, `leads`.
+
+## Known external constraint
+- Quote Analyzer AI execution is blocked until the Emergent Universal LLM Key budget is topped up (Profile → Universal Key → Add Balance). UI + error handling tested and working; live AI parsing untested pending top-up.
+
 ## Testing summary
-Iteration 1 (May 31 2026): Backend 13/13 ✅ · Frontend E2E ✅ · 100% success rate.
+Iteration 1 (May 31 2026): Backend 13/13 ✅ · Frontend E2E ✅ · 100%.
+Iteration 2 (May 31 2026): New modules — Backend 14/14 ✅ · Vendors/Leads CRUD 100% ✅ · Quotes 402 path graceful ✅. Fixed missing App.js routes (testing agent) + missing sidebar nav links (main agent).

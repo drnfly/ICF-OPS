@@ -14,6 +14,9 @@ import {
   SignOut,
   List as ListIcon,
   Shield,
+  Truck,
+  Sparkle,
+  ClipboardText,
   X,
 } from "@phosphor-icons/react";
 import { useContent } from "../context/ContentContext";
@@ -29,6 +32,9 @@ const navItems = [
   { to: "/capacity", label: "Capacity", icon: MagnifyingGlass, testid: "nav-capacity" },
   { to: "/calendar", label: "Calendar", icon: CalendarBlank, testid: "nav-calendar" },
   { to: "/maintenance", label: "Maintenance", icon: WrenchIcon, testid: "nav-maintenance" },
+  { to: "/vendors", label: "Vendors", icon: Truck, testid: "nav-vendors" },
+  { to: "/quotes", label: "Quote Analyzer", icon: Sparkle, testid: "nav-quotes" },
+  { to: "/leads", label: "Leads", icon: ClipboardText, testid: "nav-leads" },
 ];
 
 const adminNav = { to: "/admin", label: "Site Admin", icon: Shield, testid: "nav-admin" };
