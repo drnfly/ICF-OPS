@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { Plus, Minus, Package, PencilSimple, Trash, ArrowsClockwise, Upload, ClockCounterClockwise, DownloadSimple, FileCsv } from "@phosphor-icons/react";
 import { API_BASE } from "../lib/api";
 
-const CATS = ["brace", "waler", "strongback", "alignment", "scaffold", "tool", "other"];
+const CATS = ["brace", "waler", "strongback", "alignment", "scaffold", "turnbuckle", "walkboard bracket", "hand rail", "extension", "tool", "other"];
 const CONDS = ["excellent", "good", "fair", "poor", "retired"];
 
 const EMPTY = {
@@ -521,7 +521,7 @@ export default function Equipment() {
                 <div className="text-xs text-zinc-500 mt-2 leading-relaxed">
                   • <strong>name</strong> + <strong>quantity</strong> required for new rows<br />
                   • For update/add: <strong>serial</strong> or <strong>name</strong> must match an existing SKU<br />
-                  • category: brace, waler, strongback, alignment, scaffold, tool, other<br />
+                  • category: brace, waler, strongback, alignment, scaffold, turnbuckle, walkboard bracket, hand rail, extension, tool, other<br />
                   • condition: excellent, good, fair, poor, retired
                 </div>
                 <Button

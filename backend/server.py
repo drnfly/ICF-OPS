@@ -167,7 +167,7 @@ class EstimatorIn(BaseModel):
 # Equipment
 class EquipmentIn(BaseModel):
     name: str
-    category: Literal["brace", "waler", "strongback", "alignment", "scaffold", "tool", "other"]
+    category: Literal["brace", "waler", "strongback", "alignment", "scaffold", "turnbuckle", "walkboard bracket", "hand rail", "extension", "tool", "other"]
     serial: Optional[str] = None
     condition: Literal["excellent", "good", "fair", "poor", "retired"] = "good"
     location: Optional[str] = None
@@ -555,7 +555,7 @@ async def create_equipment(payload: EquipmentIn, user: dict = Depends(get_curren
 
 
 CSV_HEADERS = ["name", "category", "condition", "location", "daily_rate", "quantity", "serial", "notes"]
-VALID_CATEGORIES = {"brace", "waler", "strongback", "alignment", "scaffold", "tool", "other"}
+VALID_CATEGORIES = {"brace", "waler", "strongback", "alignment", "scaffold", "turnbuckle", "walkboard bracket", "hand rail", "extension", "tool", "other"}
 VALID_CONDITIONS = {"excellent", "good", "fair", "poor", "retired"}
 
 
