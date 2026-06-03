@@ -167,7 +167,7 @@ class EstimatorIn(BaseModel):
 # Equipment
 class EquipmentIn(BaseModel):
     name: str
-    category: Literal["brace", "waler", "strongback", "alignment", "scaffold", "turnbuckle", "walkboard bracket", "hand rail", "extension", "tool", "other"]
+    category: Literal["strongback", "turnbuckle", "walkboard bracket", "hand rail", "TB extension", "crankup scaffold"]
     serial: Optional[str] = None
     condition: Literal["excellent", "good", "fair", "poor", "retired"] = "good"
     location: Optional[str] = None
@@ -555,7 +555,16 @@ async def create_equipment(payload: EquipmentIn, user: dict = Depends(get_curren
 
 
 CSV_HEADERS = ["name", "category", "condition", "location", "daily_rate", "quantity", "serial", "notes"]
-VALID_CATEGORIES = {"brace", "waler", "strongback", "alignment", "scaffold", "turnbuckle", "walkboard bracket", "hand rail", "extension", "tool", "other"}
+VALID_CATEGORIES = {"strongback", "turnbuckle", "walkboard bracket", "hand rail", "TB extension", "crankup scaffold"}
+CATEGORY_BY_LOWER = {c.lower(): c for c in VALID_CATEGORIES}
+DEFAULT_CATEGORY = "strongback"
+
+
+def canon_category(raw) -> str:
+    """Resolve a CSV/user category to its canonical stored value (case-insensitive)."""
+    return CATEGORY_BY_LOWER.get((raw or "").strip().lower(), DEFAULT_CATEGORY)
+
+
 VALID_CONDITIONS = {"excellent", "good", "fair", "poor", "retired"}
 
 
@@ -664,8 +673,8 @@ async def import_equipment_csv(
                 update_doc = {}
                 if name:
                     update_doc["name"] = name
-                if (norm.get("category") or "").lower() in VALID_CATEGORIES:
-                    update_doc["category"] = norm["category"].lower()
+                if (norm.get("category") or "").strip().lower() in CATEGORY_BY_LOWER:
+                    update_doc["category"] = canon_category(norm.get("category"))
                 if (norm.get("condition") or "").lower() in VALID_CONDITIONS:
                     update_doc["condition"] = norm["condition"].lower()
                 if norm.get("location") is not None and norm.get("location") != "":
@@ -737,11 +746,10 @@ async def import_equipment_csv(
 
 
 def _row_to_equipment(norm: dict, name: str, qty_raw, rate_raw) -> dict:
-    cat = (norm.get("category") or "other").lower()
     cond = (norm.get("condition") or "good").lower()
     data = {
         "name": name,
-        "category": cat if cat in VALID_CATEGORIES else "other",
+        "category": canon_category(norm.get("category")),
         "condition": cond if cond in VALID_CONDITIONS else "good",
         "location": norm.get("location") or None,
         "daily_rate": float(rate_raw or 0),
@@ -2071,10 +2079,12 @@ REAL_INVENTORY = [
     {"name": "NUDURA Gen 2 Strongback",  "category": "strongback", "condition": "excellent", "location": "Yard", "daily_rate": 7.50, "quantity": 80},
     {"name": "Reachcraft Gen 1 Strongback","category": "strongback", "condition": "good",    "location": "Yard", "daily_rate": 7.00, "quantity": 40},
     {"name": "Reachcraft Gen 2 Strongback","category": "strongback", "condition": "excellent","location": "Yard", "daily_rate": 7.50, "quantity": 60},
-    {"name": "Walkboard Bracket",        "category": "scaffold",   "condition": "good",      "location": "Yard", "daily_rate": 3.00, "quantity": 100},
-    {"name": "Handrail",                 "category": "scaffold",   "condition": "good",      "location": "Yard", "daily_rate": 2.50, "quantity": 100},
-    {"name": "7' Brace Extension",       "category": "strongback", "condition": "good",      "location": "Yard", "daily_rate": 4.00, "quantity": 50},
-    {"name": "20' Brace Extension",      "category": "strongback", "condition": "good",      "location": "Yard", "daily_rate": 9.00, "quantity": 30},
+    {"name": "Turnbuckle",               "category": "turnbuckle", "condition": "good",      "location": "Yard", "daily_rate": 2.00, "quantity": 120},
+    {"name": "Walkboard Bracket",        "category": "walkboard bracket", "condition": "good","location": "Yard", "daily_rate": 3.00, "quantity": 100},
+    {"name": "Handrail",                 "category": "hand rail",  "condition": "good",      "location": "Yard", "daily_rate": 2.50, "quantity": 100},
+    {"name": "Crank-Up Scaffold",        "category": "crankup scaffold", "condition": "good", "location": "Yard", "daily_rate": 12.00, "quantity": 20},
+    {"name": "7' TB Extension",          "category": "TB extension", "condition": "good",    "location": "Yard", "daily_rate": 4.00, "quantity": 50},
+    {"name": "20' TB Extension",         "category": "TB extension", "condition": "good",    "location": "Yard", "daily_rate": 9.00, "quantity": 30},
 ]
 
 OLD_DEMO_NAMES = {
@@ -2153,6 +2163,40 @@ async def seed_demo_inventory():
         ])
 
 
+def _infer_category(name: str, current: str) -> str:
+    """Map an equipment SKU to the v3 taxonomy using name suffixes (SB, TB, Extension, etc.)."""
+    n = (name or "").lower()
+    padded = f" {n} "
+    if "extension" in n:
+        return "TB extension"
+    if "walkboard" in n:
+        return "walkboard bracket"
+    if "handrail" in n or "hand rail" in n:
+        return "hand rail"
+    if "crank" in n or "scaffold" in n:
+        return "crankup scaffold"
+    if n.endswith("tb") or " tb " in padded or "turnbuckle" in n:
+        return "turnbuckle"
+    if n.endswith("sb") or " sb " in padded or "strongback" in n:
+        return "strongback"
+    return current if current in VALID_CATEGORIES else DEFAULT_CATEGORY
+
+
+async def migrate_categories_v3():
+    """One-time remap of equipment categories to the v3 taxonomy
+    (strongback, turnbuckle, walkboard bracket, hand rail, TB extension, crankup scaffold)."""
+    if await db.meta.find_one({"_id": "categories_v3_migrated"}):
+        return
+    n_changed = 0
+    async for e in db.equipment.find({}):
+        new_cat = _infer_category(e.get("name", ""), e.get("category", ""))
+        if new_cat != e.get("category"):
+            await db.equipment.update_one({"_id": e["_id"]}, {"$set": {"category": new_cat}})
+            n_changed += 1
+    await db.meta.update_one({"_id": "categories_v3_migrated"}, {"$set": {"at": now_utc(), "changed": n_changed}}, upsert=True)
+    logger.info(f"Category v3 migration: remapped {n_changed} equipment SKUs.")
+
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -2167,6 +2211,7 @@ async def startup():
     await seed_admin()
     await seed_demo_inventory()
     await migrate_demo_inventory()
+    await migrate_categories_v3()
     await seed_vendors()
     try:
         if _ensure_storage_key():
