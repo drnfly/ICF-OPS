@@ -87,6 +87,9 @@ GET  /api/dashboard/stats
 ## Equipment categories (v3 — Jun 2026)
 Taxonomy reduced to the fleet actually used: **strongback, turnbuckle, walkboard bracket, hand rail, TB extension, crankup scaffold** (removed brace, waler, alignment, scaffold, tool, other). Updated in 4 places: frontend `CATS` + form default + CSV help text, backend `EquipmentIn.category` Literal, `VALID_CATEGORIES`. Added `canon_category()` for case-insensitive CSV import (defaults to strongback). Seed fleet (`REAL_INVENTORY`) re-categorized + added Turnbuckle & Crank-Up Scaffold SKUs. One-time `migrate_categories_v3()` remaps existing equipment by name suffix (SB→strongback, TB→turnbuckle, Extension→TB extension, Walkboard→walkboard bracket, Handrail→hand rail) — remapped 7 SKUs in preview.
 
+## Delivery Ticket (Jun 2026)
+Printable, signable delivery ticket per rental. Backend `GET /api/rentals/{id}/ticket.pdf?download=0|1` renders a PDF via **reportlab** (added to requirements.txt) — company logo + brand name (from Site Admin content), ticket #, date, deliver-to (customer name/company/phone/address), rental start/due dates, QTY · DESCRIPTION line-item table, total units, optional notes, and physical signature lines (Received by / Delivered by / Print name / Date) + a short receipt-acknowledgement line. SVG logos skipped gracefully (text fallback); missing equipment shows "(item)". Frontend: **"Ticket"** button (Printer icon) on every rental row (active + closed) opens the inline PDF in a new tab — the browser PDF viewer provides BOTH print and save-as-PDF. `data-testid="ticket-{id}"`.
+
 ## Testing summary
 Iteration 1 (May 31 2026): Backend 13/13 ✅ · Frontend E2E ✅ · 100%.
 Iteration 2 (May 31 2026): New modules — Backend 14/14 ✅ · Vendors/Leads CRUD 100% ✅ · Quotes 402 path graceful ✅. Fixed missing App.js routes (testing agent) + missing sidebar nav links (main agent).

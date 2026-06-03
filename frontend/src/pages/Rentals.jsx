@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, formatApiErrorDetail } from "../lib/api";
+import { api, formatApiErrorDetail, API_BASE } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import { Switch } from "../components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Receipt, ArrowUUpLeft, Trash, CalendarPlus } from "@phosphor-icons/react";
+import { Plus, Receipt, ArrowUUpLeft, Trash, CalendarPlus, Printer } from "@phosphor-icons/react";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const plusDays = (d) => {
@@ -531,15 +531,23 @@ function RentalTable({ rentals, onReturn, todayStr }) {
                 </td>
                 <td className="p-3 font-mono text-zinc-900">${r.deposit}</td>
                 <td className="p-3">
-                  {onReturn && (
-                    <Button size="sm" variant="outline" onClick={() => onReturn(r)} data-testid={`return-${r.id}`}
-                      className="rounded-sm font-display uppercase tracking-wider text-xs gap-1 h-8">
-                      <ArrowUUpLeft size={12} weight="bold" /> Return
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" data-testid={`ticket-${r.id}`}
+                      onClick={() => window.open(`${API_BASE}/rentals/${r.id}/ticket.pdf`, "_blank")}
+                      title="Open printable delivery ticket (print or save as PDF)"
+                      className="rounded-sm font-display uppercase tracking-wider text-xs gap-1 h-8 border-zinc-900 text-zinc-900 hover:bg-zinc-900 hover:text-white">
+                      <Printer size={12} weight="bold" /> Ticket
                     </Button>
-                  )}
-                  {!onReturn && r.condition_on_return && (
-                    <span className="text-xs text-zinc-500 capitalize">→ {r.condition_on_return}</span>
-                  )}
+                    {onReturn && (
+                      <Button size="sm" variant="outline" onClick={() => onReturn(r)} data-testid={`return-${r.id}`}
+                        className="rounded-sm font-display uppercase tracking-wider text-xs gap-1 h-8">
+                        <ArrowUUpLeft size={12} weight="bold" /> Return
+                      </Button>
+                    )}
+                    {!onReturn && r.condition_on_return && (
+                      <span className="text-xs text-zinc-500 capitalize">→ {r.condition_on_return}</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             );

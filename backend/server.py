@@ -1185,6 +1185,190 @@ async def create_rental(payload: RentalIn, user: dict = Depends(get_current_user
     return serialize_rental(doc, eq_map, cust)
 
 
+def _build_delivery_ticket_pdf(rental: dict, cust: dict, eq_map: dict, content: dict, logo) -> bytes:
+    """Render a clean, printable delivery ticket with signature lines."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.pdfgen import canvas as pdfcanvas
+    from reportlab.lib.utils import ImageReader
+
+    ORANGE = colors.HexColor("#EA580C")
+    INK = colors.HexColor("#18181B")
+    GREY = colors.HexColor("#71717A")
+    LINE = colors.HexColor("#D4D4D8")
+
+    buf = io.BytesIO()
+    c = pdfcanvas.Canvas(buf, pagesize=letter)
+    W, H = letter
+    m = 0.75 * inch
+    y = H - m
+
+    brand = content.get("brand_name", "ICF OPS HUB")
+    tagline = (content.get("brand_tagline") or "").upper()
+
+    # Header: logo + brand (left), title (right)
+    logo_off = 0
+    if logo:
+        try:
+            img = ImageReader(io.BytesIO(logo[0]))
+            iw, ih = img.getSize()
+            disp_h = 0.6 * inch
+            disp_w = disp_h * (iw / ih) if ih else 0.6 * inch
+            c.drawImage(img, m, y - disp_h, width=disp_w, height=disp_h,
+                        mask="auto", preserveAspectRatio=True)
+            logo_off = disp_w + 0.18 * inch
+        except Exception:
+            logo_off = 0
+    c.setFillColor(INK)
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(m + logo_off, y - 0.18 * inch, brand)
+    if tagline:
+        c.setFont("Helvetica", 8)
+        c.setFillColor(GREY)
+        c.drawString(m + logo_off, y - 0.36 * inch, tagline)
+    c.setFillColor(INK)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawRightString(W - m, y - 0.18 * inch, "DELIVERY TICKET")
+
+    y -= 0.72 * inch
+    c.setStrokeColor(ORANGE)
+    c.setLineWidth(2)
+    c.line(m, y, W - m, y)
+    y -= 0.32 * inch
+
+    # Ticket # + date
+    ticket_no = str(rental["_id"])[-6:].upper()
+    today = now_utc().strftime("%b %d, %Y")
+    c.setFillColor(INK)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(m, y, f"Ticket #: {ticket_no}")
+    c.drawRightString(W - m, y, f"Date: {today}")
+    y -= 0.34 * inch
+
+    # Deliver-to block
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColor(GREY)
+    c.drawString(m, y, "DELIVER TO")
+    y -= 0.22 * inch
+    c.setFillColor(INK)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(m, y, cust.get("name", "—"))
+    sub = " · ".join([x for x in [cust.get("company"), cust.get("phone")] if x])
+    if sub:
+        y -= 0.2 * inch
+        c.setFont("Helvetica", 10)
+        c.drawString(m, y, sub)
+    addr = cust.get("address")
+    if addr:
+        y -= 0.2 * inch
+        c.setFont("Helvetica", 10)
+        c.drawString(m, y, addr)
+    y -= 0.22 * inch
+    c.setFont("Helvetica", 10)
+    c.setFillColor(GREY)
+    c.drawString(m, y, f"Rental: {rental.get('start_date', '')}   \u2192   Due: {rental.get('due_date', '')}")
+    c.setFillColor(INK)
+    y -= 0.36 * inch
+
+    # Items table header
+    c.setFillColor(INK)
+    c.rect(m, y - 0.04 * inch, W - 2 * m, 0.3 * inch, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(m + 0.12 * inch, y + 0.06 * inch, "QTY")
+    c.drawString(m + 0.95 * inch, y + 0.06 * inch, "DESCRIPTION")
+    c.setFillColor(INK)
+    y -= 0.34 * inch
+
+    total_units = 0
+    c.setFont("Helvetica", 11)
+    for it in rental_items(rental):
+        eq = eq_map.get(it["equipment_id"], {})
+        name = eq.get("name", "(item)")
+        qty = it.get("quantity", 1)
+        total_units += qty
+        c.drawString(m + 0.12 * inch, y, str(qty))
+        c.drawString(m + 0.95 * inch, y, name[:70])
+        y -= 0.08 * inch
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.5)
+        c.line(m, y, W - m, y)
+        y -= 0.24 * inch
+        if y < 2.6 * inch:  # page break before signature zone
+            c.showPage()
+            y = H - m
+            c.setFont("Helvetica", 11)
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawRightString(W - m, y, f"Total units: {total_units}")
+
+    notes = rental.get("notes")
+    if notes:
+        y -= 0.34 * inch
+        c.setFont("Helvetica-Oblique", 9)
+        c.setFillColor(GREY)
+        c.drawString(m, y, f"Notes: {str(notes)[:110]}")
+        c.setFillColor(INK)
+
+    # Signature zone (anchored near bottom)
+    sig_y = 1.7 * inch
+    col_w = (W - 2 * m - 0.5 * inch) / 2
+    c.setStrokeColor(INK)
+    c.setLineWidth(1)
+    c.line(m, sig_y, m + col_w, sig_y)
+    c.line(m + col_w + 0.5 * inch, sig_y, W - m, sig_y)
+    c.setFont("Helvetica", 8)
+    c.setFillColor(GREY)
+    c.drawString(m, sig_y - 0.16 * inch, "RECEIVED BY (SIGNATURE)")
+    c.drawString(m + col_w + 0.5 * inch, sig_y - 0.16 * inch, "DELIVERED BY (SIGNATURE)")
+
+    name_y = sig_y - 0.6 * inch
+    c.setStrokeColor(INK)
+    c.line(m, name_y, m + col_w, name_y)
+    c.line(m + col_w + 0.5 * inch, name_y, W - m, name_y)
+    c.setFillColor(GREY)
+    c.drawString(m, name_y - 0.16 * inch, "PRINT NAME")
+    c.drawString(m + col_w + 0.5 * inch, name_y - 0.16 * inch, "DATE")
+
+    c.setFont("Helvetica", 7)
+    c.setFillColor(GREY)
+    c.drawString(m, 0.62 * inch, "By signing, the customer acknowledges receipt of the equipment listed above in good working condition.")
+    c.setFillColor(INK)
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+@api.get("/rentals/{rental_id}/ticket.pdf")
+async def rental_ticket_pdf(rental_id: str, download: int = 0, user: dict = Depends(get_current_user)):
+    rental = await db.rentals.find_one({"_id": ObjectId(rental_id)})
+    if not rental:
+        raise HTTPException(status_code=404, detail="Rental not found")
+    cust = await db.customers.find_one({"_id": ObjectId(rental["customer_id"])}) or {}
+    eq_ids = [ObjectId(it["equipment_id"]) for it in rental_items(rental)]
+    eq_map = {str(e["_id"]): e for e in await db.equipment.find({"_id": {"$in": eq_ids}}).to_list(100)}
+    content = await get_site_content()
+    logo = None
+    sc = await db.site_content.find_one({"_id": "site"})
+    ctype = (sc or {}).get("logo_content_type") or ""
+    if sc and sc.get("logo_path") and ctype.startswith("image/") and "svg" not in ctype:
+        try:
+            logo = _get_object(sc["logo_path"])
+        except Exception:
+            logo = None
+    pdf = _build_delivery_ticket_pdf(rental, cust, eq_map, content, logo)
+    fname = f"delivery-ticket-{str(rental['_id'])[-6:].upper()}.pdf"
+    disposition = "attachment" if download else "inline"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'{disposition}; filename="{fname}"'},
+    )
+
+
+
 @api.post("/rentals/{rental_id}/return")
 async def return_rental(rental_id: str, payload: RentalReturnIn, user: dict = Depends(get_current_user)):
     rental = await db.rentals.find_one({"_id": ObjectId(rental_id)})
