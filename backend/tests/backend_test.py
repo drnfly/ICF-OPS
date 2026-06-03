@@ -70,24 +70,15 @@ class TestAuth:
 # ---------------------- BRACING ----------------------
 class TestBracing:
     def test_bracing_calculate(self, admin_session):
-        payload = {
-            "wall_height_ft": 9, "wall_length_ft": 40, "wind_exposure": "B",
-            "pour_rate_ft_hr": 4, "concrete_temp_f": 70, "concrete_slump_in": 5,
-            "core_thickness_in": 6, "safety_factor": 2.0
-        }
+        # Simple count: 2 braces per corner + 1 brace every 4 ft of wall
+        payload = {"corners": 4, "wall_length_ft": 40, "wall_height_ft": 9}
         r = admin_session.post(f"{API}/bracing/calculate", json=payload)
         assert r.status_code == 200, r.text
         data = r.json()
-        # Expected values per problem statement
-        assert abs(data["lateral_pressure_psf"] - 664.3) < 1.0
-        assert data["brace_count"] == 12
-        assert abs(data["recommended_spacing_ft"] - 3.8) < 0.2
-        # Hardware fields
-        assert "wedge_anchors" in data
-        assert "tiedown_anchors" in data
-        assert "lag_screws" in data
-        assert isinstance(data["pressure_profile"], list)
-        assert len(data["pressure_profile"]) > 0
+        assert data["corner_braces"] == 8       # 4 corners x 2
+        assert data["wall_braces"] == 10         # ceil(40 / 4)
+        assert data["brace_count"] == 18         # 8 + 10
+        assert data["brace_type"] == "strongback"
         assert isinstance(data["warnings"], list)
 
 

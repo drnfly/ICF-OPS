@@ -143,14 +143,9 @@ class LoginIn(BaseModel):
 
 # Bracing
 class BracingIn(BaseModel):
-    wall_height_ft: float = Field(gt=0, le=20)
-    wall_length_ft: float = Field(gt=0, le=500)
-    wind_exposure: Literal["B", "C", "D"] = "B"  # ASCE 7
-    pour_rate_ft_hr: float = Field(gt=0, le=15)
-    concrete_temp_f: float = Field(ge=30, le=110)
-    concrete_slump_in: float = Field(ge=2, le=10)
-    core_thickness_in: float = Field(ge=4, le=14)
-    safety_factor: float = Field(default=2.0, ge=1.5, le=3.0)
+    corners: int = Field(ge=0, le=500)
+    wall_length_ft: float = Field(gt=0, le=5000)
+    wall_height_ft: float = Field(gt=0, le=30)
 
 
 # Estimator
@@ -331,106 +326,31 @@ async def refresh_token(request: Request, response: Response):
 @api.post("/bracing/calculate")
 async def bracing_calculate(payload: BracingIn, user: dict = Depends(get_current_user)):
     """
-    Bracing calculation using ACI 347 lateral concrete pressure principles
-    and standard ICF bracing practice (Fox Blocks / Nudura / BuildBlock guidelines).
+    Simple ICF strongback bracing count:
+      2 braces per corner + 1 brace every 4 ft of wall.
     """
-    H = payload.wall_height_ft
+    corners = payload.corners
     L = payload.wall_length_ft
-    R = payload.pour_rate_ft_hr
-    T = max(payload.concrete_temp_f, 40.0)  # avoid div by zero / cold capping
+    H = payload.wall_height_ft
 
-    # ACI 347 formula for lateral pressure (psf) of plastic concrete:
-    # P = Cw * Cc * [150 + 9000*R/T], P <= 150*H, capped at 3000 psf
-    Cw = 1.0  # unit weight factor (normal-weight concrete)
-    Cc = 1.0  # chemistry factor (Type I cement, no retarders)
-    p_aci = Cw * Cc * (150.0 + (9000.0 * R) / T)
-    p_hydro = 150.0 * H
-    P_max = min(max(p_aci, 600.0), p_hydro, 3000.0)  # psf
-
-    # Resultant lateral load per linear foot (lbs/lf) of wall
-    # Triangular pressure distribution -> total resultant = 0.5 * P_max * H
-    total_resultant_lf = 0.5 * P_max * H
-
-    # Wind adjustment per ASCE 7 exposure category (multiplier on lateral load)
-    wind_mult = {"B": 1.00, "C": 1.15, "D": 1.30}[payload.wind_exposure]
-    total_resultant_lf *= wind_mult
-
-    # ICF braces only resist the upper portion of pressure — through-form ties
-    # carry the majority (~75-80%) of lateral pressure to the slab and into the
-    # opposing form face. Per manufacturer engineering (NUDURA, Reachcraft),
-    # brace working load is ~20-25% of total lateral resultant.
-    brace_share = 0.22
-    load_per_lf = total_resultant_lf * brace_share
-
-    # All bracing is engineered strongback (NUDURA / Reachcraft Gen 1+2).
-    # Working capacity per manufacturer datasheets: ~7500 lbs. Safety factor applied.
-    brace_type = "strongback"
-    brace_capacity = 7500.0
-    allowable = brace_capacity / payload.safety_factor
-
-    # Brace spacing (ft) = allowable per brace / load per linear foot
-    spacing_calc = allowable / load_per_lf if load_per_lf > 0 else 8.0
-    # Cap recommended max spacing at 6 ft (industry guideline), min 2 ft
-    spacing = max(2.0, min(6.0, spacing_calc))
-
-    # Brace count = ceil(L / spacing) + 1 for end braces
-    brace_count = math.ceil(L / spacing) + 1
-
-    # Tie-downs: 2 anchors per brace typically (top tie and base plate)
-    tiedown_anchors = brace_count * 2
-    # Hardware: wedge bolts to slab + lag screws to top plate
-    wedge_anchors = brace_count
-    lag_screws = brace_count * 4  # top plate connection (typ 4 per brace)
-
-    # Walers (horizontal): every 4ft of height for stiffening, only if H >= 8
-    waler_rows = math.floor(H / 4) if H >= 8 else 0
-    waler_lf = waler_rows * L
-
-    # Tie pattern: vertical ties every 16" oc both directions through ICF
-    tie_pattern = "16\" o.c. both ways (vertical + horizontal) through-form ties"
-
-    # Concrete pressure profile (for chart)
-    profile = []
-    for i in range(0, int(H * 4) + 1):
-        h = i / 4.0  # every 3 inches
-        # pressure increases linearly with depth from top, capped at P_max
-        depth_from_top = H - h
-        p = min(150.0 * depth_from_top, P_max)
-        profile.append({"height_ft": round(h, 2), "pressure_psf": round(p, 1)})
+    corner_braces = corners * 2
+    wall_braces = math.ceil(L / 4.0)
+    brace_count = corner_braces + wall_braces
 
     warnings = []
-    if R > 7:
-        warnings.append("Pour rate above 7 ft/hr exceeds ACI 347 simplified formula range. Reduce pour rate or consult engineer.")
-    if T < 50:
-        warnings.append("Concrete temperature below 50°F slows set time and increases lateral pressure. Tighten brace spacing.")
     if H > 10:
-        warnings.append("Wall height >10 ft. Engineered bracing design strongly recommended.")
-    if payload.concrete_slump_in > 6:
-        warnings.append("High slump increases lateral pressure. Verify pressure assumptions.")
+        warnings.append("Wall height over 10 ft — verify brace length/rating for the pour.")
 
     result = {
         "input": payload.model_dump(),
-        "lateral_pressure_psf": round(P_max, 1),
-        "aci_pressure_psf": round(p_aci, 1),
-        "hydrostatic_pressure_psf": round(p_hydro, 1),
-        "load_per_lf": round(load_per_lf, 1),
-        "total_resultant_per_lf": round(total_resultant_lf, 1),
-        "brace_share_pct": round(brace_share * 100, 0),
-        "wind_multiplier": wind_mult,
-        "brace_type": brace_type,
-        "brace_capacity_lbs": brace_capacity,
-        "allowable_per_brace_lbs": round(allowable, 1),
-        "recommended_spacing_ft": round(spacing, 2),
-        "spacing_uncapped_ft": round(spacing_calc, 2),
+        "corners": corners,
+        "wall_length_ft": L,
+        "wall_height_ft": H,
+        "corner_braces": corner_braces,
+        "wall_braces": wall_braces,
         "brace_count": brace_count,
-        "tiedown_anchors": tiedown_anchors,
-        "wedge_anchors": wedge_anchors,
-        "lag_screws": lag_screws,
-        "waler_rows": waler_rows,
-        "waler_linear_ft": waler_lf,
-        "tie_pattern": tie_pattern,
-        "safety_factor": payload.safety_factor,
-        "pressure_profile": profile,
+        "brace_type": "strongback",
+        "rule": "2 braces per corner + 1 brace every 4 ft of wall",
         "warnings": warnings,
         "calculated_at": now_utc().isoformat(),
     }
@@ -441,7 +361,7 @@ async def bracing_calculate(payload: BracingIn, user: dict = Depends(get_current
         "user_email": user["email"],
         "type": "bracing",
         "input": payload.model_dump(),
-        "result": {k: v for k, v in result.items() if k != "pressure_profile"},
+        "result": result,
         "created_at": now_utc(),
     }
     await db.calculations.insert_one(history)
