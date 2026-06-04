@@ -4,7 +4,7 @@ import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
-import { Cube, Ruler, Stack, Plus, Minus, ArrowsLeftRight, Trash, Square } from "@phosphor-icons/react";
+import { Cube, Ruler, Stack, Plus, Minus, ArrowsLeftRight, Trash, Square, GridFour } from "@phosphor-icons/react";
 
 /* ---------- dimension helpers (feet-inch-sixteenths) ---------- */
 const FRACTIONS = Array.from({ length: 16 }, (_, i) => {
@@ -246,6 +246,67 @@ function BlocksTab() {
   );
 }
 
+/* ===================== TAB — REBAR TAKEOFF ===================== */
+const REBAR_WT = { "#3": 0.376, "#4": 0.668, "#5": 1.043, "#6": 1.502, "#7": 2.044, "#8": 2.670 };
+function RebarTab() {
+  const [length, setLength] = useState({ ...EMPTY_DIM });
+  const [height, setHeight] = useState({ ...EMPTY_DIM });
+  const [vSpace, setVSpace] = useState("16");
+  const [hSpace, setHSpace] = useState("16");
+  const [size, setSize] = useState("#4");
+  const [stock, setStock] = useState("20");
+  const [waste, setWaste] = useState("10");
+
+  const L = dimToFeet(length), H = dimToFeet(height);
+  const vs = Number(vSpace) || 0, hs = Number(hSpace) || 0;
+  const vBars = vs > 0 && L > 0 ? Math.floor((L * 12) / vs) + 1 : 0; // vertical bars along length
+  const hRows = hs > 0 && H > 0 ? Math.floor((H * 12) / hs) + 1 : 0; // horizontal rows up height
+  const lfVert = vBars * H;
+  const lfHoriz = hRows * L;
+  const factor = 1 + (Number(waste) || 0) / 100;
+  const lfTotal = (lfVert + lfHoriz) * factor;
+  const wt = lfTotal * (REBAR_WT[size] || 0);
+  const stockNum = Number(stock);
+  const sticks = stockNum > 0 ? Math.ceil(lfTotal / stockNum) : 0;
+
+  return (
+    <div className="grid md:grid-cols-2 gap-6">
+      <div className="space-y-4 border border-zinc-200 bg-white p-5">
+        <div><Label className="label-eyebrow">Wall length</Label><DimInput value={length} onChange={setLength} testid="rb-length" /></div>
+        <div><Label className="label-eyebrow">Wall height</Label><DimInput value={height} onChange={setHeight} testid="rb-height" /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label className="label-eyebrow">Vertical spacing (in o.c.)</Label><Input type="number" value={vSpace} onChange={(e) => setVSpace(e.target.value)} className="rounded-sm mt-1" data-testid="rb-vspace" /></div>
+          <div><Label className="label-eyebrow">Horizontal spacing (in o.c.)</Label><Input type="number" value={hSpace} onChange={(e) => setHSpace(e.target.value)} className="rounded-sm mt-1" data-testid="rb-hspace" /></div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label className="label-eyebrow">Bar size</Label>
+            <Select value={size} onValueChange={setSize}>
+              <SelectTrigger className="rounded-sm mt-1" data-testid="rb-size"><SelectValue /></SelectTrigger>
+              <SelectContent>{Object.keys(REBAR_WT).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div><Label className="label-eyebrow">Stock length (ft)</Label><Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="rounded-sm mt-1" data-testid="rb-stock" /></div>
+          <div><Label className="label-eyebrow">Waste / lap %</Label><Input type="number" value={waste} onChange={(e) => setWaste(e.target.value)} className="rounded-sm mt-1" data-testid="rb-waste" /></div>
+        </div>
+        <p className="text-xs text-zinc-500">Verticals run full height, horizontals run full length. Waste % covers lap splices &amp; cutoffs.</p>
+      </div>
+      <div className="space-y-3">
+        <Stat label="Total rebar (with waste)" value={num(lfTotal, 0)} unit="lin ft" accent testid="rb-result-lf" />
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label={`Weight (${size})`} value={num(wt, 0)} unit="lb" testid="rb-result-wt" />
+          <Stat label={`Sticks (${stock || 0}')`} value={num(sticks, 0)} unit="ea" testid="rb-result-sticks" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Vertical bars" value={num(vBars, 0)} unit="ea" testid="rb-vbars" />
+          <Stat label="Horizontal rows" value={num(hRows, 0)} unit="ea" testid="rb-hrows" />
+        </div>
+        <div className="text-xs text-zinc-400">{num(lfVert, 0)} lf vert + {num(lfHoriz, 0)} lf horiz · +{waste || 0}% · {num(wt / 2000, 2)} tons</div>
+      </div>
+    </div>
+  );
+}
+
 /* ===================== TAB 5 — DIMENSION MATH (Construction Master tape) ===================== */
 function DimensionTab() {
   const [entry, setEntry] = useState({ ...EMPTY_DIM });
@@ -323,12 +384,14 @@ export default function Calculator() {
           <TabsTrigger value="convert" className="rounded-sm gap-1.5 data-[state=active]:bg-zinc-900 data-[state=active]:text-white" data-testid="tab-convert"><ArrowsLeftRight size={14} weight="bold" /> Ft-In ↔ Decimal</TabsTrigger>
           <TabsTrigger value="area" className="rounded-sm gap-1.5 data-[state=active]:bg-zinc-900 data-[state=active]:text-white" data-testid="tab-area"><Square size={14} weight="bold" /> Area</TabsTrigger>
           <TabsTrigger value="blocks" className="rounded-sm gap-1.5 data-[state=active]:bg-zinc-900 data-[state=active]:text-white" data-testid="tab-blocks"><Stack size={14} weight="bold" /> ICF Blocks</TabsTrigger>
+          <TabsTrigger value="rebar" className="rounded-sm gap-1.5 data-[state=active]:bg-zinc-900 data-[state=active]:text-white" data-testid="tab-rebar"><GridFour size={14} weight="bold" /> Rebar</TabsTrigger>
           <TabsTrigger value="dimension" className="rounded-sm gap-1.5 data-[state=active]:bg-zinc-900 data-[state=active]:text-white" data-testid="tab-dimension"><Ruler size={14} weight="bold" /> Dimension Math</TabsTrigger>
         </TabsList>
         <TabsContent value="concrete" className="mt-6"><ConcreteTab /></TabsContent>
         <TabsContent value="convert" className="mt-6"><ConvertTab /></TabsContent>
         <TabsContent value="area" className="mt-6"><AreaTab /></TabsContent>
         <TabsContent value="blocks" className="mt-6"><BlocksTab /></TabsContent>
+        <TabsContent value="rebar" className="mt-6"><RebarTab /></TabsContent>
         <TabsContent value="dimension" className="mt-6"><DimensionTab /></TabsContent>
       </Tabs>
     </div>
