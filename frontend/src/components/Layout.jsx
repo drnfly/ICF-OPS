@@ -17,6 +17,7 @@ import {
   Truck,
   Sparkle,
   ClipboardText,
+  MathOperations,
   X,
 } from "@phosphor-icons/react";
 import { useContent } from "../context/ContentContext";
@@ -26,6 +27,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: ChartBar, end: true, testid: "nav-dashboard" },
   { to: "/bracing", label: "Bracing Engine", icon: Wrench, testid: "nav-bracing" },
   { to: "/estimator", label: "Quick Estimator", icon: Calculator, testid: "nav-estimator" },
+  { to: "/calculator", label: "Calculator", icon: MathOperations, testid: "nav-calculator" },
   { to: "/equipment", label: "Equipment", icon: Package, testid: "nav-equipment" },
   { to: "/rentals", label: "Rentals", icon: Receipt, testid: "nav-rentals" },
   { to: "/bookings", label: "Bookings", icon: CalendarPlus, testid: "nav-bookings" },

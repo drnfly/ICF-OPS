@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import BracingEngine from "./pages/BracingEngine";
 import Estimator from "./pages/Estimator";
+import Calculator from "./pages/Calculator";
 import Equipment from "./pages/Equipment";
 import Rentals from "./pages/Rentals";
 import Bookings from "./pages/Bookings";
@@ -40,6 +41,7 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="bracing" element={<BracingEngine />} />
               <Route path="estimator" element={<Estimator />} />
+              <Route path="calculator" element={<Calculator />} />
               <Route path="equipment" element={<Equipment />} />
               <Route path="rentals" element={<Rentals />} />
               <Route path="bookings" element={<Bookings />} />
