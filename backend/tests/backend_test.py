@@ -70,14 +70,21 @@ class TestAuth:
 # ---------------------- BRACING ----------------------
 class TestBracing:
     def test_bracing_calculate(self, admin_session):
-        # Simple count: 1 brace per corner + 1 brace every 4 ft of wall
-        payload = {"corners": 4, "wall_length_ft": 40, "wall_height_ft": 9}
+        # Simple count across runs: 1 brace per corner + 1 every 4 ft; length by height
+        payload = {"runs": [
+            {"corners": 4, "wall_length_ft": 40, "wall_height_ft": 9},    # 4 + 10 = 14 @ 10'
+            {"corners": 2, "wall_length_ft": 32, "wall_height_ft": 16},   # 2 + 8 = 10 @ 16'
+        ]}
         r = admin_session.post(f"{API}/bracing/calculate", json=payload)
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["corner_braces"] == 4       # 4 corners x 1
-        assert data["wall_braces"] == 10         # ceil(40 / 4)
-        assert data["brace_count"] == 14         # 4 + 10
+        assert data["brace_count"] == 24            # 14 + 10
+        assert data["runs"][0]["brace_count"] == 14
+        assert data["runs"][0]["brace_length_ft"] == 10
+        assert data["runs"][1]["brace_count"] == 10
+        assert data["runs"][1]["brace_length_ft"] == 16
+        by_len = {t["brace_length_ft"]: t["count"] for t in data["totals_by_length"]}
+        assert by_len[10] == 14 and by_len[16] == 10
         assert data["brace_type"] == "strongback"
         assert isinstance(data["warnings"], list)
 

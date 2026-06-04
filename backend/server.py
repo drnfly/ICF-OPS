@@ -142,10 +142,14 @@ class LoginIn(BaseModel):
 
 
 # Bracing
-class BracingIn(BaseModel):
+class BracingRunIn(BaseModel):
     corners: int = Field(ge=0, le=500)
     wall_length_ft: float = Field(gt=0, le=5000)
     wall_height_ft: float = Field(gt=0, le=30)
+
+
+class BracingIn(BaseModel):
+    runs: List[BracingRunIn] = Field(min_length=1, max_length=50)
 
 
 # Estimator
@@ -326,29 +330,69 @@ async def refresh_token(request: Request, response: Response):
 @api.post("/bracing/calculate")
 async def bracing_calculate(payload: BracingIn, user: dict = Depends(get_current_user)):
     """
-    Simple ICF strongback bracing count:
+    Simple ICF strongback bracing count across one or more wall runs:
       1 brace per corner + 1 brace every 4 ft of wall.
+    Brace length is picked by wall height:
+      <=10' -> 10' brace, 10-12' -> 12', 12-16' -> 16', 16-20' -> 20'.
     """
-    corners = payload.corners
-    L = payload.wall_length_ft
-    H = payload.wall_height_ft
+    def brace_length_ft(h: float):
+        if h <= 10:
+            return 10
+        if h <= 12:
+            return 12
+        if h <= 16:
+            return 16
+        if h <= 20:
+            return 20
+        return None  # over spec
 
-    corner_braces = corners * 1
-    wall_braces = math.ceil(L / 4.0)
-    brace_count = corner_braces + wall_braces
-
+    runs_out = []
     warnings = []
-    if H > 10:
-        warnings.append("Wall height over 10 ft — verify brace length/rating for the pour.")
+    by_length: dict = {}
+    total_corner = 0
+    total_wall = 0
+
+    for idx, run in enumerate(payload.runs):
+        corner_braces = run.corners * 1
+        wall_braces = math.ceil(run.wall_length_ft / 4.0)
+        count = corner_braces + wall_braces
+        blen = brace_length_ft(run.wall_height_ft)
+
+        total_corner += corner_braces
+        total_wall += wall_braces
+        if blen is None:
+            warnings.append(f"Run {idx + 1}: wall height {run.wall_height_ft} ft exceeds 20 ft — no standard brace length; engineer required.")
+            key = "over-20"
+        else:
+            key = blen
+        by_length[key] = by_length.get(key, 0) + count
+
+        runs_out.append({
+            "corners": run.corners,
+            "wall_length_ft": run.wall_length_ft,
+            "wall_height_ft": run.wall_height_ft,
+            "corner_braces": corner_braces,
+            "wall_braces": wall_braces,
+            "brace_count": count,
+            "brace_length_ft": blen,
+        })
+
+    def _sort_key(k):
+        return (1, 0) if k == "over-20" else (0, k)
+
+    totals_by_length = [
+        {"brace_length_ft": (None if k == "over-20" else k), "count": v}
+        for k, v in sorted(by_length.items(), key=lambda kv: _sort_key(kv[0]))
+    ]
+    grand_total = total_corner + total_wall
 
     result = {
         "input": payload.model_dump(),
-        "corners": corners,
-        "wall_length_ft": L,
-        "wall_height_ft": H,
-        "corner_braces": corner_braces,
-        "wall_braces": wall_braces,
-        "brace_count": brace_count,
+        "runs": runs_out,
+        "totals_by_length": totals_by_length,
+        "corner_braces": total_corner,
+        "wall_braces": total_wall,
+        "brace_count": grand_total,
         "brace_type": "strongback",
         "rule": "1 brace per corner + 1 brace every 4 ft of wall",
         "warnings": warnings,
