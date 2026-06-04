@@ -327,13 +327,13 @@ async def refresh_token(request: Request, response: Response):
 async def bracing_calculate(payload: BracingIn, user: dict = Depends(get_current_user)):
     """
     Simple ICF strongback bracing count:
-      2 braces per corner + 1 brace every 4 ft of wall.
+      1 brace per corner + 1 brace every 4 ft of wall.
     """
     corners = payload.corners
     L = payload.wall_length_ft
     H = payload.wall_height_ft
 
-    corner_braces = corners * 2
+    corner_braces = corners * 1
     wall_braces = math.ceil(L / 4.0)
     brace_count = corner_braces + wall_braces
 
@@ -350,7 +350,7 @@ async def bracing_calculate(payload: BracingIn, user: dict = Depends(get_current
         "wall_braces": wall_braces,
         "brace_count": brace_count,
         "brace_type": "strongback",
-        "rule": "2 braces per corner + 1 brace every 4 ft of wall",
+        "rule": "1 brace per corner + 1 brace every 4 ft of wall",
         "warnings": warnings,
         "calculated_at": now_utc().isoformat(),
     }

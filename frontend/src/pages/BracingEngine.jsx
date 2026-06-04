@@ -74,7 +74,7 @@ export default function BracingEngine() {
           <div className="label-eyebrow">Field Bracing</div>
           <h1 className="font-display font-black text-4xl sm:text-5xl tracking-tight text-zinc-900 mt-2">Bracing Engine</h1>
           <p className="text-zinc-500 mt-1 text-sm max-w-xl">
-            Enter your corners, wall run, and height. Get a fast strongback count — <span className="font-display font-semibold text-zinc-700">2 braces per corner + 1 brace every 4 ft of wall</span>.
+            Enter your corners, wall run, and height. Get a fast strongback count — <span className="font-display font-semibold text-zinc-700">1 brace per corner + 1 brace every 4 ft of wall</span>.
           </p>
         </div>
       </div>
@@ -160,7 +160,7 @@ export default function BracingEngine() {
                 <div className="label-eyebrow mb-3">How this was figured</div>
                 <ul className="space-y-2 text-sm text-zinc-700 font-mono">
                   <li className="flex justify-between border-b border-zinc-100 pb-2">
-                    <span>{result.corners} corners × 2 braces</span>
+                    <span>{result.corners} corners × 1 brace</span>
                     <span className="font-bold text-zinc-900">{result.corner_braces}</span>
                   </li>
                   <li className="flex justify-between border-b border-zinc-100 pb-2">
