@@ -93,6 +93,9 @@ Printable, signable delivery ticket per rental. Backend `GET /api/rentals/{id}/t
 ## Bracing Engine — simplified (Jun 2026)
 Replaced the ACI 347 lateral-pressure calculator with a fast field count per user request. Inputs: **corners, linear ft of wall, wall height**. Formula: **brace_count = (corners × 2) + ceil(wall_length_ft / 4)** — 2 strongbacks per corner + 1 every 4 ft of wall. Backend `BracingIn` + `/api/bracing/calculate` rewritten (returns corner_braces, wall_braces, brace_count, brace_type, rule, warnings; still saves to db.calculations). Frontend `BracingEngine.jsx` rewritten to a 3-input form with total + corner/wall breakdown + "how this was figured" math. Removed wind/pour-rate/temp/slump/safety-factor inputs, pressure chart, hardware schedule. Updated `backend_test.py` bracing test (4 corners + 40ft → 18). Dashboard recent-calcs unaffected (only reads type/user/date).
 
+## Construction Calculator (Jun 2026)
+New "Calculator" sidebar tab (`/calculator`, `Calculator.jsx`, client-side, no backend). Tools: **ICF Wall Concrete** (multi-run: each run length×height×core → summed cubic yards w/ waste + per-run table), **Ft-In↔Decimal** converter, **Area** (sq ft w/ waste), **ICF Blocks** (presets + custom, openings, waste), **Rebar takeoff** (multi-run: per run length/height/V&H spacing → vertical+horizontal bar counts, total lin ft, weight by bar size #3–#8, sticks; aggregate totals + per-run table), **Dimension Math** (Construction Master–style ft-in-fraction running tape with ×/÷ scaling). All imperial, feet-inches-1/16. Multi-run added to Concrete & Rebar per user request. Delivery ticket confirmed pricing-free (qty + description only).
+
 ## Testing summary
 Iteration 1 (May 31 2026): Backend 13/13 ✅ · Frontend E2E ✅ · 100%.
 Iteration 2 (May 31 2026): New modules — Backend 14/14 ✅ · Vendors/Leads CRUD 100% ✅ · Quotes 402 path graceful ✅. Fixed missing App.js routes (testing agent) + missing sidebar nav links (main agent).

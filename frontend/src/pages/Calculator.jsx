@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
@@ -78,50 +78,81 @@ function Stat({ label, value, unit, accent, testid }) {
 
 const num = (v, d = 2) => (isFinite(v) ? Number(v).toLocaleString(undefined, { maximumFractionDigits: d }) : "—");
 
-/* ===================== TAB 1 — ICF WALL CONCRETE ===================== */
+/* ===================== TAB 1 — ICF WALL CONCRETE (multi-run) ===================== */
+const newConcreteRun = () => ({ length: { ...EMPTY_DIM }, height: { ...EMPTY_DIM }, core: "6", customCore: "" });
 function ConcreteTab() {
-  const [length, setLength] = useState({ ...EMPTY_DIM });
-  const [height, setHeight] = useState({ ...EMPTY_DIM });
-  const [core, setCore] = useState("6");
-  const [customCore, setCustomCore] = useState("");
+  const [runs, setRuns] = useState([newConcreteRun()]);
   const [waste, setWaste] = useState("5");
 
-  const r = useMemo(() => {
-    const L = dimToFeet(length);
-    const H = dimToFeet(height);
-    const coreIn = core === "custom" ? Number(customCore) || 0 : Number(core);
-    const cf = L * H * (coreIn / 12);
-    const factor = 1 + (Number(waste) || 0) / 100;
-    return { cf, cy: cf / 27, cfW: cf * factor, cyW: (cf * factor) / 27, L, H, coreIn };
-  }, [length, height, core, customCore, waste]);
+  const upd = (i, patch) => setRuns((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRun = () => setRuns((rs) => [...rs, newConcreteRun()]);
+  const removeRun = (i) => setRuns((rs) => (rs.length === 1 ? rs : rs.filter((_, idx) => idx !== i)));
+
+  const factor = 1 + (Number(waste) || 0) / 100;
+  const perRun = runs.map((r) => {
+    const L = dimToFeet(r.length), H = dimToFeet(r.height);
+    const coreIn = r.core === "custom" ? Number(r.customCore) || 0 : Number(r.core);
+    return { L, H, coreIn, cf: L * H * (coreIn / 12) };
+  });
+  const totalCf = perRun.reduce((s, x) => s + x.cf, 0);
 
   return (
     <div className="grid md:grid-cols-2 gap-6">
-      <div className="space-y-4 border border-zinc-200 bg-white p-5">
-        <div><Label className="label-eyebrow">Wall length</Label><DimInput value={length} onChange={setLength} testid="cc-length" /></div>
-        <div><Label className="label-eyebrow">Wall height</Label><DimInput value={height} onChange={setHeight} testid="cc-height" /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label className="label-eyebrow">Core thickness</Label>
-            <Select value={core} onValueChange={setCore}>
-              <SelectTrigger className="rounded-sm mt-1" data-testid="cc-core"><SelectValue /></SelectTrigger>
-              <SelectContent>{["4", "6", "8", "10", "12"].map((c) => <SelectItem key={c} value={c}>{c}"</SelectItem>)}<SelectItem value="custom">Custom…</SelectItem></SelectContent>
-            </Select>
-          </div>
-          {core === "custom" && (
-            <div><Label className="label-eyebrow">Custom (in)</Label><Input type="number" value={customCore} onChange={(e) => setCustomCore(e.target.value)} className="rounded-sm mt-1" data-testid="cc-core-custom" /></div>
-          )}
-          <div><Label className="label-eyebrow">Waste %</Label><Input type="number" value={waste} onChange={(e) => setWaste(e.target.value)} className="rounded-sm mt-1" data-testid="cc-waste" /></div>
+      <div className="space-y-4">
+        <div className="space-y-3">
+          {runs.map((r, i) => (
+            <div key={i} className="border border-zinc-200 bg-white p-4" data-testid={`cc-run-${i}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="label-eyebrow">Wall run {i + 1}</div>
+                {runs.length > 1 && (
+                  <button type="button" onClick={() => removeRun(i)} className="p-1 text-red-600 hover:bg-red-50 rounded-sm" data-testid={`cc-run-remove-${i}`} aria-label="Remove run"><Trash size={14} weight="bold" /></button>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div><Label className="text-xs text-zinc-600">Length</Label><DimInput value={r.length} onChange={(v) => upd(i, { length: v })} testid={`cc-length-${i}`} /></div>
+                <div><Label className="text-xs text-zinc-600">Height</Label><DimInput value={r.height} onChange={(v) => upd(i, { height: v })} testid={`cc-height-${i}`} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-zinc-600">Core thickness</Label>
+                    <Select value={r.core} onValueChange={(v) => upd(i, { core: v })}>
+                      <SelectTrigger className="rounded-sm mt-1" data-testid={`cc-core-${i}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>{["4", "6", "8", "10", "12"].map((c) => <SelectItem key={c} value={c}>{c}{'"'}</SelectItem>)}<SelectItem value="custom">Custom…</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  {r.core === "custom" && (
+                    <div><Label className="text-xs text-zinc-600">Custom (in)</Label><Input type="number" value={r.customCore} onChange={(e) => upd(i, { customCore: e.target.value })} className="rounded-sm mt-1" data-testid={`cc-core-custom-${i}`} /></div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-        <p className="text-xs text-zinc-500">Concrete fills the ICF core only: length × height × core thickness.</p>
+        <Button type="button" variant="outline" onClick={addRun} data-testid="cc-add-run"
+          className="w-full rounded-sm font-display uppercase tracking-wider text-xs gap-2 border-dashed border-zinc-400"><Plus size={14} weight="bold" /> Add wall run</Button>
+        <div className="w-1/2"><Label className="label-eyebrow">Waste %</Label><Input type="number" value={waste} onChange={(e) => setWaste(e.target.value)} className="rounded-sm mt-1" data-testid="cc-waste" /></div>
+        <p className="text-xs text-zinc-500">Concrete fills the ICF core only: length × height × core thickness, summed across all runs.</p>
       </div>
       <div className="space-y-3">
-        <Stat label="Concrete needed (with waste)" value={num(r.cyW)} unit="cu yd" accent testid="cc-result-cy" />
+        <Stat label="Total concrete (with waste)" value={num((totalCf * factor) / 27)} unit="cu yd" accent testid="cc-result-cy" />
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="Cubic feet (w/ waste)" value={num(r.cfW, 1)} unit="ft³" testid="cc-result-cf" />
-          <Stat label="Net (no waste)" value={num(r.cy)} unit="cu yd" testid="cc-result-net" />
+          <Stat label="Cubic feet (w/ waste)" value={num(totalCf * factor, 1)} unit="ft³" testid="cc-result-cf" />
+          <Stat label="Net (no waste)" value={num(totalCf / 27)} unit="cu yd" testid="cc-result-net" />
         </div>
-        <div className="text-xs text-zinc-400">{fmtFtIn(r.L * 12)} × {fmtFtIn(r.H * 12)} × {r.coreIn}" core</div>
+        <div className="border border-zinc-200 bg-white overflow-x-auto" data-testid="cc-runs-table">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-100"><tr>{["Run", "L × H × core", "cu yd"].map((h) => <th key={h} className="text-left p-2.5 font-display font-bold uppercase tracking-wider text-[10px] text-zinc-700">{h}</th>)}</tr></thead>
+            <tbody>
+              {perRun.map((x, i) => (
+                <tr key={i} className={i % 2 ? "bg-zinc-50" : "bg-white"}>
+                  <td className="p-2.5 font-display font-medium text-zinc-900">{i + 1}</td>
+                  <td className="p-2.5 font-mono text-zinc-700 text-xs">{fmtFtIn(x.L * 12)} × {fmtFtIn(x.H * 12)} × {x.coreIn}{'"'}</td>
+                  <td className="p-2.5 font-mono text-zinc-900">{num(x.cf / 27)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr className="bg-zinc-900 text-white"><td className="p-2.5 font-display font-bold uppercase tracking-wider text-xs" colSpan={2}>Total (w/ {waste || 0}% waste)</td><td className="p-2.5 font-mono font-bold text-orange-400">{num((totalCf * factor) / 27)} cy</td></tr></tfoot>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -240,7 +271,7 @@ function BlocksTab() {
           <Stat label="Wall area (net)" value={num(net)} unit="ft²" testid="blk-net" />
           <Stat label="Block face area" value={num(faceSf)} unit="ft²" testid="blk-face" />
         </div>
-        <div className="text-xs text-zinc-400">Rounded up · includes {waste || 0}% waste · {blockH}" × {blockL}" face</div>
+        <div className="text-xs text-zinc-400">Rounded up · includes {waste || 0}% waste · {blockH}{'"'} × {blockL}{'"'} face</div>
       </div>
     </div>
   );
@@ -248,37 +279,60 @@ function BlocksTab() {
 
 /* ===================== TAB — REBAR TAKEOFF ===================== */
 const REBAR_WT = { "#3": 0.376, "#4": 0.668, "#5": 1.043, "#6": 1.502, "#7": 2.044, "#8": 2.670 };
+const newRebarRun = () => ({ length: { ...EMPTY_DIM }, height: { ...EMPTY_DIM }, vSpace: "16", hSpace: "16" });
 function RebarTab() {
-  const [length, setLength] = useState({ ...EMPTY_DIM });
-  const [height, setHeight] = useState({ ...EMPTY_DIM });
-  const [vSpace, setVSpace] = useState("16");
-  const [hSpace, setHSpace] = useState("16");
+  const [runs, setRuns] = useState([newRebarRun()]);
   const [size, setSize] = useState("#4");
   const [stock, setStock] = useState("20");
   const [waste, setWaste] = useState("10");
 
-  const L = dimToFeet(length), H = dimToFeet(height);
-  const vs = Number(vSpace) || 0, hs = Number(hSpace) || 0;
-  const vBars = vs > 0 && L > 0 ? Math.floor((L * 12) / vs) + 1 : 0; // vertical bars along length
-  const hRows = hs > 0 && H > 0 ? Math.floor((H * 12) / hs) + 1 : 0; // horizontal rows up height
-  const lfVert = vBars * H;
-  const lfHoriz = hRows * L;
+  const upd = (i, patch) => setRuns((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRun = () => setRuns((rs) => [...rs, newRebarRun()]);
+  const removeRun = (i) => setRuns((rs) => (rs.length === 1 ? rs : rs.filter((_, idx) => idx !== i)));
+
   const factor = 1 + (Number(waste) || 0) / 100;
-  const lfTotal = (lfVert + lfHoriz) * factor;
+  const perRun = runs.map((r) => {
+    const L = dimToFeet(r.length), H = dimToFeet(r.height);
+    const vs = Number(r.vSpace) || 0, hs = Number(r.hSpace) || 0;
+    const vBars = vs > 0 && L > 0 ? Math.floor((L * 12) / vs) + 1 : 0;
+    const hRows = hs > 0 && H > 0 ? Math.floor((H * 12) / hs) + 1 : 0;
+    const lfVert = vBars * H, lfHoriz = hRows * L;
+    return { L, H, vBars, hRows, lf: lfVert + lfHoriz };
+  });
+  const lfRaw = perRun.reduce((s, x) => s + x.lf, 0);
+  const lfTotal = lfRaw * factor;
   const wt = lfTotal * (REBAR_WT[size] || 0);
   const stockNum = Number(stock);
   const sticks = stockNum > 0 ? Math.ceil(lfTotal / stockNum) : 0;
+  const totVBars = perRun.reduce((s, x) => s + x.vBars, 0);
+  const totHRows = perRun.reduce((s, x) => s + x.hRows, 0);
 
   return (
     <div className="grid md:grid-cols-2 gap-6">
-      <div className="space-y-4 border border-zinc-200 bg-white p-5">
-        <div><Label className="label-eyebrow">Wall length</Label><DimInput value={length} onChange={setLength} testid="rb-length" /></div>
-        <div><Label className="label-eyebrow">Wall height</Label><DimInput value={height} onChange={setHeight} testid="rb-height" /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label className="label-eyebrow">Vertical spacing (in o.c.)</Label><Input type="number" value={vSpace} onChange={(e) => setVSpace(e.target.value)} className="rounded-sm mt-1" data-testid="rb-vspace" /></div>
-          <div><Label className="label-eyebrow">Horizontal spacing (in o.c.)</Label><Input type="number" value={hSpace} onChange={(e) => setHSpace(e.target.value)} className="rounded-sm mt-1" data-testid="rb-hspace" /></div>
+      <div className="space-y-4">
+        <div className="space-y-3">
+          {runs.map((r, i) => (
+            <div key={i} className="border border-zinc-200 bg-white p-4" data-testid={`rb-run-${i}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="label-eyebrow">Wall run {i + 1}</div>
+                {runs.length > 1 && (
+                  <button type="button" onClick={() => removeRun(i)} className="p-1 text-red-600 hover:bg-red-50 rounded-sm" data-testid={`rb-run-remove-${i}`} aria-label="Remove run"><Trash size={14} weight="bold" /></button>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div><Label className="text-xs text-zinc-600">Length</Label><DimInput value={r.length} onChange={(v) => upd(i, { length: v })} testid={`rb-length-${i}`} /></div>
+                <div><Label className="text-xs text-zinc-600">Height</Label><DimInput value={r.height} onChange={(v) => upd(i, { height: v })} testid={`rb-height-${i}`} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-xs text-zinc-600">Vertical spacing (in o.c.)</Label><Input type="number" value={r.vSpace} onChange={(e) => upd(i, { vSpace: e.target.value })} className="rounded-sm mt-1" data-testid={`rb-vspace-${i}`} /></div>
+                  <div><Label className="text-xs text-zinc-600">Horizontal spacing (in o.c.)</Label><Input type="number" value={r.hSpace} onChange={(e) => upd(i, { hSpace: e.target.value })} className="rounded-sm mt-1" data-testid={`rb-hspace-${i}`} /></div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <Button type="button" variant="outline" onClick={addRun} data-testid="rb-add-run"
+          className="w-full rounded-sm font-display uppercase tracking-wider text-xs gap-2 border-dashed border-zinc-400"><Plus size={14} weight="bold" /> Add wall run</Button>
+        <div className="grid grid-cols-3 gap-3 border-t border-zinc-100 pt-3">
           <div>
             <Label className="label-eyebrow">Bar size</Label>
             <Select value={size} onValueChange={setSize}>
@@ -289,7 +343,7 @@ function RebarTab() {
           <div><Label className="label-eyebrow">Stock length (ft)</Label><Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="rounded-sm mt-1" data-testid="rb-stock" /></div>
           <div><Label className="label-eyebrow">Waste / lap %</Label><Input type="number" value={waste} onChange={(e) => setWaste(e.target.value)} className="rounded-sm mt-1" data-testid="rb-waste" /></div>
         </div>
-        <p className="text-xs text-zinc-500">Verticals run full height, horizontals run full length. Waste % covers lap splices &amp; cutoffs.</p>
+        <p className="text-xs text-zinc-500">Verticals run full height, horizontals run full length. Waste % covers lap splices &amp; cutoffs. Totals sum all runs.</p>
       </div>
       <div className="space-y-3">
         <Stat label="Total rebar (with waste)" value={num(lfTotal, 0)} unit="lin ft" accent testid="rb-result-lf" />
@@ -298,10 +352,27 @@ function RebarTab() {
           <Stat label={`Sticks (${stock || 0}')`} value={num(sticks, 0)} unit="ea" testid="rb-result-sticks" />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="Vertical bars" value={num(vBars, 0)} unit="ea" testid="rb-vbars" />
-          <Stat label="Horizontal rows" value={num(hRows, 0)} unit="ea" testid="rb-hrows" />
+          <Stat label="Vertical bars" value={num(totVBars, 0)} unit="ea" testid="rb-vbars" />
+          <Stat label="Horizontal rows" value={num(totHRows, 0)} unit="ea" testid="rb-hrows" />
         </div>
-        <div className="text-xs text-zinc-400">{num(lfVert, 0)} lf vert + {num(lfHoriz, 0)} lf horiz · +{waste || 0}% · {num(wt / 2000, 2)} tons</div>
+        <div className="border border-zinc-200 bg-white overflow-x-auto" data-testid="rb-runs-table">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-100"><tr>{["Run", "L × H", "V bars", "H rows", "lin ft"].map((h) => <th key={h} className="text-left p-2.5 font-display font-bold uppercase tracking-wider text-[10px] text-zinc-700">{h}</th>)}</tr></thead>
+            <tbody>
+              {perRun.map((x, i) => (
+                <tr key={i} className={i % 2 ? "bg-zinc-50" : "bg-white"}>
+                  <td className="p-2.5 font-display font-medium text-zinc-900">{i + 1}</td>
+                  <td className="p-2.5 font-mono text-zinc-700 text-xs">{fmtFtIn(x.L * 12)} × {fmtFtIn(x.H * 12)}</td>
+                  <td className="p-2.5 font-mono text-zinc-700">{x.vBars}</td>
+                  <td className="p-2.5 font-mono text-zinc-700">{x.hRows}</td>
+                  <td className="p-2.5 font-mono text-zinc-900">{num(x.lf, 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr className="bg-zinc-900 text-white"><td className="p-2.5 font-display font-bold uppercase tracking-wider text-xs" colSpan={4}>Total (w/ {waste || 0}%)</td><td className="p-2.5 font-mono font-bold text-orange-400">{num(lfTotal, 0)} lf</td></tr></tfoot>
+          </table>
+        </div>
+        <div className="text-xs text-zinc-400">{num(wt / 2000, 2)} tons</div>
       </div>
     </div>
   );
